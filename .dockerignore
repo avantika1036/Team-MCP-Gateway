@@ -7,3 +7,4 @@
 **/.env.*
 *.log
 store-rendered.yaml
+/services/control-plane/data/

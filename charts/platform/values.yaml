@@ -1,0 +1,63 @@
+nameOverride: ""
+fullnameOverride: ""
+
+calculator:
+  image:
+    repository: urumi/calculator-mcp
+    tag: "0.1.0"
+    pullPolicy: IfNotPresent
+  port: 4001
+  resources:
+    requests:
+      cpu: 50m
+      memory: 96Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+utility:
+  image:
+    repository: urumi/utility-mcp
+    tag: "0.1.0"
+    pullPolicy: IfNotPresent
+  port: 4002
+  resources:
+    requests:
+      cpu: 50m
+      memory: 96Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+gateway:
+  image:
+    repository: urumi/control-plane
+    tag: "0.1.0"
+    pullPolicy: IfNotPresent
+  port: 4000
+  adminToken:
+    existingSecret: urumi-gateway-admin
+    key: admin-token
+  upstreamTimeoutMs: 5000
+  registry:
+    persistence:
+      size: 1Gi
+      storageClassName: ""
+  woocommerce:
+    url: "http://urumi-store-mcp.urumi-store.svc.cluster.local:3002/mcp"
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+
+ingress:
+  enabled: false
+  className: nginx
+  host: mcp.urumi.test
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"

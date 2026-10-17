@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "platform.fullname" . }}-registry
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.gateway.registry.persistence.size }}
+  {{- with .Values.gateway.registry.persistence.storageClassName }}
+  storageClassName: {{ . | quote }}
+  {{- end }}

@@ -1,0 +1,87 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "platform.fullname" . }}-utility
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: utility-mcp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "platform.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: utility-mcp
+  template:
+    metadata:
+      labels:
+        {{- include "platform.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: utility-mcp
+    spec:
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: utility-mcp
+          image: "{{ .Values.utility.image.repository }}:{{ .Values.utility.image.tag }}"
+          imagePullPolicy: {{ .Values.utility.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.utility.port }}
+          env:
+            - name: PORT
+              value: {{ .Values.utility.port | quote }}
+            - name: MCP_HOST
+              value: "0.0.0.0"
+            - name: MCP_ALLOWED_HOSTS
+              value: "{{ include "platform.fullname" . }}-utility,{{ include "platform.fullname" . }}-utility.{{ .Release.Namespace }}.svc,{{ include "platform.fullname" . }}-utility.{{ .Release.Namespace }}.svc.cluster.local,localhost,127.0.0.1,[::1]"
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+              httpHeaders:
+                - name: Host
+                  value: {{ include "platform.fullname" . }}-utility
+            periodSeconds: 5
+            failureThreshold: 24
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+              httpHeaders:
+                - name: Host
+                  value: {{ include "platform.fullname" . }}-utility
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+              httpHeaders:
+                - name: Host
+                  value: {{ include "platform.fullname" . }}-utility
+            periodSeconds: 20
+            timeoutSeconds: 3
+          resources:
+            {{- toYaml .Values.utility.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 1000
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "platform.fullname" . }}-utility
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: {{ .Values.utility.port }}
+      targetPort: http
+  selector:
+    {{- include "platform.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: utility-mcp

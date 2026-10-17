@@ -1,0 +1,87 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "platform.fullname" . }}-calculator
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: calculator-mcp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "platform.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: calculator-mcp
+  template:
+    metadata:
+      labels:
+        {{- include "platform.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: calculator-mcp
+    spec:
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: calculator-mcp
+          image: "{{ .Values.calculator.image.repository }}:{{ .Values.calculator.image.tag }}"
+          imagePullPolicy: {{ .Values.calculator.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.calculator.port }}
+          env:
+            - name: PORT
+              value: {{ .Values.calculator.port | quote }}
+            - name: MCP_HOST
+              value: "0.0.0.0"
+            - name: MCP_ALLOWED_HOSTS
+              value: "{{ include "platform.fullname" . }}-calculator,{{ include "platform.fullname" . }}-calculator.{{ .Release.Namespace }}.svc,{{ include "platform.fullname" . }}-calculator.{{ .Release.Namespace }}.svc.cluster.local,localhost,127.0.0.1,[::1]"
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+              httpHeaders:
+                - name: Host
+                  value: {{ include "platform.fullname" . }}-calculator
+            periodSeconds: 5
+            failureThreshold: 24
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+              httpHeaders:
+                - name: Host
+                  value: {{ include "platform.fullname" . }}-calculator
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+              httpHeaders:
+                - name: Host
+                  value: {{ include "platform.fullname" . }}-calculator
+            periodSeconds: 20
+            timeoutSeconds: 3
+          resources:
+            {{- toYaml .Values.calculator.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 1000
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "platform.fullname" . }}-calculator
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: {{ .Values.calculator.port }}
+      targetPort: http
+  selector:
+    {{- include "platform.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: calculator-mcp

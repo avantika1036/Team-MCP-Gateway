@@ -1,0 +1,136 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "platform.fullname" . }}-gateway
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "platform.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: gateway
+  template:
+    metadata:
+      labels:
+        {{- include "platform.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: gateway
+    spec:
+      securityContext:
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: bootstrap-registry
+          image: "{{ .Values.gateway.image.repository }}:{{ .Values.gateway.image.tag }}"
+          imagePullPolicy: {{ .Values.gateway.image.pullPolicy }}
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              if [ ! -s /data/servers.json ]; then
+                cp /bootstrap/servers.json /data/servers.json.tmp
+                mv /data/servers.json.tmp /data/servers.json
+              fi
+          volumeMounts:
+            - name: registry
+              mountPath: /data
+            - name: bootstrap
+              mountPath: /bootstrap
+              readOnly: true
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 1000
+            capabilities:
+              drop: ["ALL"]
+      containers:
+        - name: gateway
+          image: "{{ .Values.gateway.image.repository }}:{{ .Values.gateway.image.tag }}"
+          imagePullPolicy: {{ .Values.gateway.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.gateway.port }}
+          env:
+            - name: PORT
+              value: {{ .Values.gateway.port | quote }}
+            - name: MCP_HOST
+              value: "0.0.0.0"
+            - name: MCP_ALLOWED_HOSTS
+              value: "{{ include "platform.fullname" . }}-gateway,{{ include "platform.fullname" . }}-gateway.{{ .Release.Namespace }}.svc,{{ include "platform.fullname" . }}-gateway.{{ .Release.Namespace }}.svc.cluster.local,localhost,127.0.0.1,[::1]"
+            - name: MCP_ALLOWED_UPSTREAM_HOSTS
+              value: ".svc,.svc.cluster.local,localhost,127.0.0.1,::1"
+            - name: UPSTREAM_TIMEOUT_MS
+              value: {{ .Values.gateway.upstreamTimeoutMs | quote }}
+            - name: REGISTRY_FILE
+              value: /app/data/servers.json
+            - name: GATEWAY_ADMIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "gateway.adminToken.existingSecret is required" .Values.gateway.adminToken.existingSecret }}
+                  key: {{ .Values.gateway.adminToken.key }}
+          volumeMounts:
+            - name: registry
+              mountPath: /app/data
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+              httpHeaders:
+                - name: Host
+                  value: {{ include "platform.fullname" . }}-gateway
+            periodSeconds: 5
+            failureThreshold: 24
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+              httpHeaders:
+                - name: Host
+                  value: {{ include "platform.fullname" . }}-gateway
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+              httpHeaders:
+                - name: Host
+                  value: {{ include "platform.fullname" . }}-gateway
+            periodSeconds: 20
+            timeoutSeconds: 3
+          resources:
+            {{- toYaml .Values.gateway.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 1000
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        - name: registry
+          persistentVolumeClaim:
+            claimName: {{ include "platform.fullname" . }}-registry
+        - name: bootstrap
+          configMap:
+            name: {{ include "platform.fullname" . }}-bootstrap
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "platform.fullname" . }}-gateway
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: {{ .Values.gateway.port }}
+      targetPort: http
+  selector:
+    {{- include "platform.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway

@@ -1,0 +1,34 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "platform.fullname" . }}-bootstrap
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+data:
+  servers.json: |
+    [
+      {
+        "id": "woocommerce",
+        "name": "WooCommerce",
+        "url": {{ .Values.gateway.woocommerce.url | quote }},
+        "enabled": true,
+        "createdAt": "2026-10-18T00:00:00.000Z",
+        "updatedAt": "2026-10-18T00:00:00.000Z"
+      },
+      {
+        "id": "calculator",
+        "name": "Calculator",
+        "url": {{ printf "http://%s-calculator.%s.svc.cluster.local:%v/mcp" (include "platform.fullname" .) .Release.Namespace .Values.calculator.port | quote }},
+        "enabled": true,
+        "createdAt": "2026-10-18T00:00:00.000Z",
+        "updatedAt": "2026-10-18T00:00:00.000Z"
+      },
+      {
+        "id": "utility",
+        "name": "Utility",
+        "url": {{ printf "http://%s-utility.%s.svc.cluster.local:%v/mcp" (include "platform.fullname" .) .Release.Namespace .Values.utility.port | quote }},
+        "enabled": true,
+        "createdAt": "2026-10-18T00:00:00.000Z",
+        "updatedAt": "2026-10-18T00:00:00.000Z"
+      }
+    ]
