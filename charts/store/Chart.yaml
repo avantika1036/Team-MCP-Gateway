@@ -1,0 +1,6 @@
+apiVersion: v2
+name: store
+description: Reusable WooCommerce store with persistent WordPress and MariaDB
+type: application
+version: 0.1.0
+appVersion: '0.1.0'

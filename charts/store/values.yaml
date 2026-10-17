@@ -1,0 +1,59 @@
+nameOverride: ''
+fullnameOverride: ''
+
+credentials:
+  # Prefer a Secret created separately with kubectl or by the provisioner.
+  create: false
+  existingSecret: store-credentials
+  dbRootPassword: ''
+  dbPassword: ''
+  wordpressAdminPassword: ''
+
+database:
+  image: mariadb:11.4
+  name: wordpress
+  user: wordpress
+  persistence:
+    enabled: true
+    size: 5Gi
+    storageClassName: ''
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: '1'
+      memory: 1Gi
+
+wordpress:
+  image:
+    repository: urumi/wordpress-woocommerce
+    tag: '0.1.1'
+    pullPolicy: IfNotPresent
+  replicas: 1
+  title: Urumi Demo Store
+  siteUrl: ''
+  adminUser: storeadmin
+  adminEmail: admin@example.com
+  initTimeoutSeconds: 300
+  persistence:
+    enabled: true
+    size: 5Gi
+    storageClassName: ''
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: '1'
+      memory: 768Mi
+
+service:
+  port: 80
+
+ingress:
+  enabled: true
+  className: nginx
+  host: shop.urumi.test
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: 32m

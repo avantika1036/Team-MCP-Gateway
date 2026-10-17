@@ -1,0 +1,125 @@
+{{- if .Values.wordpress.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "store.fullname" . }}-wordpress-content
+  labels:
+    {{- include "store.labels" . | nindent 4 }}
+    app.kubernetes.io/component: wordpress
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.wordpress.persistence.size }}
+  {{- with .Values.wordpress.persistence.storageClassName }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+---
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "store.fullname" . }}
+  labels:
+    {{- include "store.labels" . | nindent 4 }}
+    app.kubernetes.io/component: wordpress
+spec:
+  replicas: {{ .Values.wordpress.replicas }}
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "store.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: wordpress
+  template:
+    metadata:
+      labels:
+        {{- include "store.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: wordpress
+    spec:
+      containers:
+        - name: wordpress
+          image: "{{ .Values.wordpress.image.repository }}:{{ .Values.wordpress.image.tag }}"
+          imagePullPolicy: {{ .Values.wordpress.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 80
+          env:
+            - name: WORDPRESS_DB_HOST
+              value: "{{ include "store.fullname" . }}-database:3306"
+            - name: WORDPRESS_DB_NAME
+              value: {{ .Values.database.name | quote }}
+            - name: WORDPRESS_DB_USER
+              value: {{ .Values.database.user | quote }}
+            - name: WORDPRESS_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "store.secretName" . }}
+                  key: db-password
+            - name: WORDPRESS_URL
+              value: {{ default (printf "http://%s" .Values.ingress.host) .Values.wordpress.siteUrl | quote }}
+            - name: WORDPRESS_TITLE
+              value: {{ .Values.wordpress.title | quote }}
+            - name: WORDPRESS_ADMIN_USER
+              value: {{ .Values.wordpress.adminUser | quote }}
+            - name: WORDPRESS_ADMIN_EMAIL
+              value: {{ .Values.wordpress.adminEmail | quote }}
+            - name: WORDPRESS_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "store.secretName" . }}
+                  key: wordpress-admin-password
+            - name: WORDPRESS_INIT_TIMEOUT_SECONDS
+              value: {{ .Values.wordpress.initTimeoutSeconds | quote }}
+          startupProbe:
+            httpGet:
+              path: /wp-login.php
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 90
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -ec
+                - 'wp core is-installed --path=/var/www/html --allow-root && wp plugin is-active woocommerce --path=/var/www/html --allow-root'
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /wp-login.php
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 5
+          resources:
+            {{- toYaml .Values.wordpress.resources | nindent 12 }}
+          volumeMounts:
+            - name: wordpress-content
+              mountPath: /var/www/html
+      volumes:
+        - name: wordpress-content
+          {{- if .Values.wordpress.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "store.fullname" . }}-wordpress-content
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "store.fullname" . }}
+  labels:
+    {{- include "store.labels" . | nindent 4 }}
+    app.kubernetes.io/component: wordpress
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: {{ .Values.service.port }}
+      targetPort: http
+  selector:
+    {{- include "store.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: wordpress
