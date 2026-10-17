@@ -1,10 +1,10 @@
-nameOverride: ""
-fullnameOverride: ""
+nameOverride: ''
+fullnameOverride: ''
 
 calculator:
   image:
     repository: urumi/calculator-mcp
-    tag: "0.1.0"
+    tag: '0.1.0'
     pullPolicy: IfNotPresent
   port: 4001
   resources:
@@ -18,7 +18,7 @@ calculator:
 utility:
   image:
     repository: urumi/utility-mcp
-    tag: "0.1.0"
+    tag: '0.1.0'
     pullPolicy: IfNotPresent
   port: 4002
   resources:
@@ -29,10 +29,32 @@ utility:
       cpu: 500m
       memory: 256Mi
 
+database:
+  image:
+    repository: postgres
+    tag: '17-alpine'
+    pullPolicy: IfNotPresent
+  existingSecret: urumi-gateway-db
+  keys:
+    database: postgres-db
+    username: postgres-user
+    password: postgres-password
+    url: database-url
+  persistence:
+    size: 5Gi
+    storageClassName: ''
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: '1'
+      memory: 512Mi
+
 gateway:
   image:
     repository: urumi/control-plane
-    tag: "0.1.0"
+    tag: '0.1.0'
     pullPolicy: IfNotPresent
   port: 4000
   adminToken:
@@ -42,15 +64,15 @@ gateway:
   registry:
     persistence:
       size: 1Gi
-      storageClassName: ""
+      storageClassName: ''
   woocommerce:
-    url: "http://urumi-store-mcp.urumi-store.svc.cluster.local:3002/mcp"
+    url: 'http://urumi-store-mcp.urumi-store.svc.cluster.local:3002/mcp'
   resources:
     requests:
       cpu: 100m
       memory: 128Mi
     limits:
-      cpu: "1"
+      cpu: '1'
       memory: 512Mi
 
 ingress:
@@ -58,6 +80,6 @@ ingress:
   className: nginx
   host: mcp.urumi.test
   annotations:
-    nginx.ingress.kubernetes.io/proxy-buffering: "off"
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
-    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-buffering: 'off'
+    nginx.ingress.kubernetes.io/proxy-read-timeout: '3600'
+    nginx.ingress.kubernetes.io/proxy-send-timeout: '3600'

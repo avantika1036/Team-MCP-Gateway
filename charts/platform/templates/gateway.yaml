@@ -25,6 +25,29 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       initContainers:
+        - name: wait-for-postgres
+          image: "{{ .Values.database.image.repository }}:{{ .Values.database.image.tag }}"
+          imagePullPolicy: {{ .Values.database.image.pullPolicy }}
+          command:
+            - /bin/sh
+            - -ec
+          args:
+            - |
+              until pg_isready -h {{ include "platform.fullname" . }}-postgres -p 5432 -U "$POSTGRES_USER" -d "$POSTGRES_DB"; do
+                echo "Waiting for PostgreSQL..."
+                sleep 2
+              done
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.database.existingSecret }}
+                  key: {{ .Values.database.keys.username }}
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.database.existingSecret }}
+                  key: {{ .Values.database.keys.database }}
         - name: bootstrap-registry
           image: "{{ .Values.gateway.image.repository }}:{{ .Values.gateway.image.tag }}"
           imagePullPolicy: {{ .Values.gateway.image.pullPolicy }}
@@ -68,6 +91,11 @@ spec:
               value: {{ .Values.gateway.upstreamTimeoutMs | quote }}
             - name: REGISTRY_FILE
               value: /app/data/servers.json
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.database.existingSecret }}
+                  key: {{ .Values.database.keys.url }}
             - name: GATEWAY_ADMIN_TOKEN
               valueFrom:
                 secretKeyRef:

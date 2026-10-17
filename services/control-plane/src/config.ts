@@ -31,6 +31,7 @@ export const config = {
   bindHost: process.env.MCP_HOST ?? '127.0.0.1',
   port,
   adminToken: requiredEnv('GATEWAY_ADMIN_TOKEN'),
+  databaseUrl: process.env.DATABASE_URL?.trim() ?? '',
   requestTimeoutMs,
   registryFile: process.env.REGISTRY_FILE ?? './data/servers.json',
   allowedHosts: csvEnv('MCP_ALLOWED_HOSTS', 'localhost,127.0.0.1,[::1]'),
