@@ -57,3 +57,19 @@ ingress:
   host: shop.urumi.test
   annotations:
     nginx.ingress.kubernetes.io/proxy-body-size: 32m
+
+mcp:
+  enabled: true
+  image:
+    repository: urumi/woocommerce-mcp
+    tag: '0.1.2'
+    pullPolicy: IfNotPresent
+  port: 3002
+  requestTimeoutMs: 10000
+  resources:
+    requests:
+      cpu: 50m
+      memory: 96Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi

@@ -1,0 +1,104 @@
+{{- if .Values.mcp.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "store.fullname" . }}-mcp
+  labels:
+    {{- include "store.labels" . | nindent 4 }}
+    app.kubernetes.io/component: woocommerce-mcp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "store.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: woocommerce-mcp
+  template:
+    metadata:
+      labels:
+        {{- include "store.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: woocommerce-mcp
+    spec:
+      containers:
+        - name: woocommerce-mcp
+          image: "{{ .Values.mcp.image.repository }}:{{ .Values.mcp.image.tag }}"
+          imagePullPolicy: {{ .Values.mcp.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.mcp.port }}
+          env:
+            - name: WOOCOMMERCE_URL
+              value: {{ default (printf "http://%s" .Values.ingress.host) .Values.wordpress.siteUrl | quote }}
+            - name: WOOCOMMERCE_TRANSPORT_URL
+              value: "http://{{ include "store.fullname" . }}"
+            - name: WOOCOMMERCE_CONSUMER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: woocommerce-api-credentials
+                  key: consumer-key
+            - name: WOOCOMMERCE_CONSUMER_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: woocommerce-api-credentials
+                  key: consumer-secret
+            - name: MCP_HOST
+              value: "0.0.0.0"
+            - name: MCP_ALLOWED_HOSTS
+              value: "{{ include "store.fullname" . }}-mcp,{{ include "store.fullname" . }}-mcp.{{ .Release.Namespace }}.svc,{{ include "store.fullname" . }}-mcp.{{ .Release.Namespace }}.svc.cluster.local,localhost,127.0.0.1,[::1]"
+            - name: PORT
+              value: {{ .Values.mcp.port | quote }}
+            - name: REQUEST_TIMEOUT_MS
+              value: {{ .Values.mcp.requestTimeoutMs | quote }}
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+              httpHeaders:
+                - name: Host
+                  value: {{ include "store.fullname" . }}-mcp
+            periodSeconds: 5
+            failureThreshold: 24
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+              httpHeaders:
+                - name: Host
+                  value: {{ include "store.fullname" . }}-mcp
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+              httpHeaders:
+                - name: Host
+                  value: {{ include "store.fullname" . }}-mcp
+            periodSeconds: 20
+            timeoutSeconds: 3
+          resources:
+            {{- toYaml .Values.mcp.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 1000
+            capabilities:
+              drop:
+                - ALL
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "store.fullname" . }}-mcp
+  labels:
+    {{- include "store.labels" . | nindent 4 }}
+    app.kubernetes.io/component: woocommerce-mcp
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: {{ .Values.mcp.port }}
+      targetPort: http
+  selector:
+    {{- include "store.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: woocommerce-mcp
+{{- end }}
