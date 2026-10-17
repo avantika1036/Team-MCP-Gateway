@@ -21,3 +21,7 @@ Thumbs.db
 
 # Local Kubernetes configuration
 .minikube/
+
+/data/
+
+/services/control-plane/data/
