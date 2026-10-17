@@ -1,0 +1,23 @@
+node_modules/
+dist/
+build/
+coverage/
+*.log
+
+.env
+.env.*
+!.env.example
+
+!.gitkeep
+
+.DS_Store
+Thumbs.db
+
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+*.tsbuildinfo
+
+# Local Kubernetes configuration
+.minikube/
