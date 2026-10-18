@@ -51,10 +51,18 @@ database:
       cpu: '1'
       memory: 512Mi
 
+chat:
+  llm:
+    baseUrl: 'https://api.groq.com/openai/v1'
+    model: 'openai/gpt-oss-120b'
+    timeoutMs: 45000
+    existingSecret: urumi-llm-credentials
+    apiKeyKey: api-key
+
 gateway:
   image:
     repository: urumi/control-plane
-    tag: '0.1.0'
+    tag: '0.1.4'
     pullPolicy: IfNotPresent
   port: 4000
   adminToken:

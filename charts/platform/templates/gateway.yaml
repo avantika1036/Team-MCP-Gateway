@@ -96,6 +96,17 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.database.existingSecret }}
                   key: {{ .Values.database.keys.url }}
+            - name: LLM_BASE_URL
+              value: {{ .Values.chat.llm.baseUrl | quote }}
+            - name: LLM_MODEL
+              value: {{ .Values.chat.llm.model | quote }}
+            - name: LLM_TIMEOUT_MS
+              value: {{ .Values.chat.llm.timeoutMs | quote }}
+            - name: LLM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.chat.llm.existingSecret }}
+                  key: {{ .Values.chat.llm.apiKeyKey }}
             - name: GATEWAY_ADMIN_TOKEN
               valueFrom:
                 secretKeyRef:

@@ -1,5 +1,6 @@
 import { timingSafeEqual } from 'node:crypto';
 import { AsyncLocalStorage } from 'node:async_hooks';
+import { fileURLToPath } from 'node:url';
 import express, { type RequestHandler } from 'express';
 
 import { createMcpHandler, fromJsonSchema, McpServer } from '@modelcontextprotocol/server';
@@ -11,6 +12,7 @@ import * as z from 'zod';
 import { config, validateUpstreamUrl } from './config.js';
 import { ServerRegistry, type UpstreamServer } from './registry.js';
 import { callUpstreamTool, discoverTools, type RemoteTool } from './upstreams.js';
+import { runChatWithGateway, type ConversationMessage } from './chat.js';
 
 import {
   authenticateApiKey,
@@ -69,6 +71,18 @@ const createUserSchema = z.object({
 
 const createKeySchema = z.object({
   keyName: z.string().trim().min(1).max(100),
+});
+
+const chatRequestSchema = z.object({
+  messages: z
+    .array(
+      z.object({
+        role: z.enum(['user', 'assistant']),
+        content: z.string().trim().min(1).max(6000),
+      }),
+    )
+    .min(1)
+    .max(20),
 });
 
 function constantTimeEqual(left: string, right: string): boolean {
@@ -321,6 +335,13 @@ const app = createMcpExpressApp({
 });
 
 app.use(express.json({ limit: '64kb' }));
+
+const dashboardDirectory = fileURLToPath(new URL('../../../apps/dashboard/', import.meta.url));
+const chatPagePath = fileURLToPath(new URL('../../../apps/dashboard/chat.html', import.meta.url));
+app.use('/dashboard', express.static(dashboardDirectory, { index: 'index.html' }));
+app.get(/^\/chat\/?$/, (_request, response) => response.sendFile(chatPagePath));
+
+app.get('/', (_request, response) => response.redirect('/dashboard/'));
 
 app.get('/healthz', (_request, response) => {
   response.status(200).json({
@@ -621,6 +642,112 @@ app.post('/api/admin/servers/:id/refresh', requireAdmin, async (request, respons
 
   const status = runtimeStatus.get(id);
   response.json({ id, status: status ?? null });
+});
+
+app.get('/api/session', async (request, response) => {
+  if (!config.databaseUrl) {
+    response.status(503).json({ error: 'Identity database is not configured.' });
+    return;
+  }
+
+  const header = request.header('authorization');
+  const supplied = header?.match(/^Bearer\s+(.+)$/i)?.[1];
+  if (!supplied) {
+    response.status(401).json({ error: 'A valid user API key is required.' });
+    return;
+  }
+
+  try {
+    const identity = await authenticateApiKey(supplied);
+    if (!identity) {
+      response.status(401).json({ error: 'Invalid, expired, or revoked API key.' });
+      return;
+    }
+
+    response.json({
+      user: {
+        id: identity.userId,
+        email: identity.email,
+        displayName: identity.displayName,
+        role: identity.role,
+      },
+    });
+  } catch (error) {
+    console.error('Chat session authentication failed:', messageOf(error));
+    response.status(503).json({ error: 'Authentication service unavailable.' });
+  }
+});
+
+app.post('/api/chat', async (request, response) => {
+  if (!config.databaseUrl) {
+    response.status(503).json({ error: 'Identity database is not configured.' });
+    return;
+  }
+
+  if (!config.llmApiKey) {
+    response.status(503).json({ error: 'The chat agent is not configured with an LLM API key.' });
+    return;
+  }
+
+  const header = request.header('authorization');
+  const supplied = header?.match(/^Bearer\s+(.+)$/i)?.[1];
+
+  if (!supplied) {
+    response.status(401).json({ error: 'A valid user API key is required.' });
+    return;
+  }
+
+  let identity: AuthenticatedIdentity | null;
+  try {
+    identity = await authenticateApiKey(supplied);
+  } catch (error) {
+    console.error('Chat authentication failed:', messageOf(error));
+    response.status(503).json({ error: 'Authentication service unavailable.' });
+    return;
+  }
+
+  if (!identity) {
+    response.status(401).json({ error: 'Invalid, expired, or revoked API key.' });
+    return;
+  }
+
+  const parsed = chatRequestSchema.safeParse(request.body);
+  if (!parsed.success) {
+    response.status(400).json({
+      error: 'Send between 1 and 20 non-empty user/assistant messages.',
+      details: parsed.error.issues,
+    });
+    return;
+  }
+
+  if (parsed.data.messages.at(-1)?.role !== 'user') {
+    response.status(400).json({ error: 'The latest chat message must be from the user.' });
+    return;
+  }
+
+  const totalCharacters = parsed.data.messages.reduce(
+    (total, message) => total + message.content.length,
+    0,
+  );
+  if (totalCharacters > 24000) {
+    response.status(413).json({ error: 'Conversation is too long. Start a new chat.' });
+    return;
+  }
+
+  try {
+    const result = await runChatWithGateway(
+      supplied,
+      parsed.data.messages as ConversationMessage[],
+    );
+    response.json({
+      ...result,
+      identity: { displayName: identity.displayName, role: identity.role },
+    });
+  } catch (error) {
+    const message = messageOf(error);
+    console.error('Chat agent request failed:', message);
+    response.status(502).json({ error: message.slice(0, 500) });
+  }
 });
 
 const mcpHandler = toNodeHandler(createMcpHandler(() => buildGatewayMcpServer()));

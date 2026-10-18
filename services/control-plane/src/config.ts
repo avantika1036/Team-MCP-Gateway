@@ -17,6 +17,7 @@ function csvEnv(name: string, fallback: string): string[] {
 
 const port = Number(process.env.PORT ?? '4000');
 const requestTimeoutMs = Number(process.env.UPSTREAM_TIMEOUT_MS ?? '5000');
+const llmTimeoutMs = Number(process.env.LLM_TIMEOUT_MS ?? '45000');
 
 if (!Number.isInteger(port) || port < 1 || port > 65535) {
   throw new Error('PORT must be a valid TCP port.');
@@ -26,12 +27,20 @@ if (!Number.isInteger(requestTimeoutMs) || requestTimeoutMs < 1000 || requestTim
   throw new Error('UPSTREAM_TIMEOUT_MS must be between 1000 and 60000.');
 }
 
+if (!Number.isInteger(llmTimeoutMs) || llmTimeoutMs < 1000 || llmTimeoutMs > 120000) {
+  throw new Error('LLM_TIMEOUT_MS must be between 1000 and 120000.');
+}
+
 export const config = {
   serviceName: 'urumi-mcp-gateway',
   bindHost: process.env.MCP_HOST ?? '127.0.0.1',
   port,
   adminToken: requiredEnv('GATEWAY_ADMIN_TOKEN'),
   databaseUrl: process.env.DATABASE_URL?.trim() ?? '',
+  llmApiKey: process.env.LLM_API_KEY?.trim() ?? '',
+  llmBaseUrl: (process.env.LLM_BASE_URL ?? 'https://api.openai.com/v1').trim(),
+  llmModel: (process.env.LLM_MODEL ?? 'gpt-4o-mini').trim(),
+  llmTimeoutMs,
   requestTimeoutMs,
   registryFile: process.env.REGISTRY_FILE ?? './data/servers.json',
   allowedHosts: csvEnv('MCP_ALLOWED_HOSTS', 'localhost,127.0.0.1,[::1]'),
