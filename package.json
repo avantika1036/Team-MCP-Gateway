@@ -9,9 +9,11 @@
     "packages/*"
   ],
   "scripts": {
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
-    "check": "npm run format:check"
+    "format": "node node_modules/prettier/bin/prettier.cjs --write .",
+    "format:check": "node node_modules/prettier/bin/prettier.cjs --check .",
+    "check": "npm run format:check && npm test",
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run build --workspaces --if-present && npm run test --workspaces --if-present"
   },
   "devDependencies": {
     "prettier": "^3.6.0",

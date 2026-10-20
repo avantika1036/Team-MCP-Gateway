@@ -1,2 +1,9 @@
 charts/**/templates/**
 images/**
+
+# Temporary patch/debug artifacts (not repository source)
+.schema-fix-bundle/
+.trailing-slash-fix/
+APPLY-*-FIX.md
+MULTISTORE-PROVISIONING-PATCH.txt
+*.patch

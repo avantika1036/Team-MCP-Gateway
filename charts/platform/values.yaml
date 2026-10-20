@@ -59,10 +59,29 @@ chat:
     existingSecret: urumi-llm-credentials
     apiKeyKey: api-key
 
+provisioner:
+  image:
+    repository: urumi/provisioner
+    tag: '0.1.0'
+    pullPolicy: IfNotPresent
+  port: 4100
+  baseDomain: 'urumi.test'
+  urlScheme: 'http'
+  urlPort: '8080'
+  maxStoresPerUser: 3
+  namespacePrefix: 'urumi-store-'
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
 gateway:
   image:
     repository: urumi/control-plane
-    tag: '0.1.4'
+    tag: '0.1.6'
     pullPolicy: IfNotPresent
   port: 4000
   adminToken:

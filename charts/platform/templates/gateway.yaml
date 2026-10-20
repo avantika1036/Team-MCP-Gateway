@@ -96,6 +96,13 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.database.existingSecret }}
                   key: {{ .Values.database.keys.url }}
+            - name: PROVISIONER_URL
+              value: "http://{{ include "platform.fullname" . }}-provisioner.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.provisioner.port }}"
+            - name: PROVISIONER_INTERNAL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.gateway.adminToken.existingSecret }}
+                  key: {{ .Values.gateway.adminToken.key }}
             - name: LLM_BASE_URL
               value: {{ .Values.chat.llm.baseUrl | quote }}
             - name: LLM_MODEL

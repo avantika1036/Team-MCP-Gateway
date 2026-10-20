@@ -37,6 +37,8 @@ export const config = {
   port,
   adminToken: requiredEnv('GATEWAY_ADMIN_TOKEN'),
   databaseUrl: process.env.DATABASE_URL?.trim() ?? '',
+  provisionerUrl: (process.env.PROVISIONER_URL ?? '').trim().replace(/\/$/, ''),
+  provisionerToken: process.env.PROVISIONER_INTERNAL_TOKEN?.trim() ?? '',
   llmApiKey: process.env.LLM_API_KEY?.trim() ?? '',
   llmBaseUrl: (process.env.LLM_BASE_URL ?? 'https://api.openai.com/v1').trim(),
   llmModel: (process.env.LLM_MODEL ?? 'gpt-4o-mini').trim(),

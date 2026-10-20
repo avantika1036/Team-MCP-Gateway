@@ -25,3 +25,10 @@ Thumbs.db
 /data/
 
 /services/control-plane/data/
+
+# Temporary patch/debug bundles from development; do not submit them
+.schema-fix-bundle/
+.trailing-slash-fix/
+APPLY-*-FIX.md
+MULTISTORE-PROVISIONING-PATCH.txt
+*.patch

@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "test": "node --test",
+    "smoke:mcp": "node scripts/external-mcp-smoke.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/client": "^2.3.1",

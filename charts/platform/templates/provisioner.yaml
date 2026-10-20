@@ -1,0 +1,174 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "platform.fullname" . }}-provisioner
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "platform.fullname" . }}-provisioner
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "create", "delete"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["rolebindings"]
+    verbs: ["get", "create"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["clusterroles"]
+    resourceNames:
+      - {{ include "platform.fullname" . }}-store-operator
+    verbs: ["get", "bind"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "platform.fullname" . }}-store-operator
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources:
+      - "configmaps"
+      - "endpoints"
+      - "events"
+      - "limitranges"
+      - "persistentvolumeclaims"
+      - "pods"
+      - "pods/exec"
+      - "resourcequotas"
+      - "secrets"
+      - "serviceaccounts"
+      - "services"
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["ingresses", "networkpolicies"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "platform.fullname" . }}-provisioner
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "platform.fullname" . }}-provisioner
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "platform.fullname" . }}-provisioner
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "platform.fullname" . }}-provisioner
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+    app.kubernetes.io/component: provisioner
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "platform.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: provisioner
+  template:
+    metadata:
+      labels:
+        {{- include "platform.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: provisioner
+    spec:
+      serviceAccountName: {{ include "platform.fullname" . }}-provisioner
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: provisioner
+          image: "{{ .Values.provisioner.image.repository }}:{{ .Values.provisioner.image.tag }}"
+          imagePullPolicy: {{ .Values.provisioner.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.provisioner.port }}
+          env:
+            - name: PORT
+              value: {{ .Values.provisioner.port | quote }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.database.existingSecret }}
+                  key: {{ .Values.database.keys.url }}
+            - name: PROVISIONER_INTERNAL_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.gateway.adminToken.existingSecret }}
+                  key: {{ .Values.gateway.adminToken.key }}
+            - name: STORE_CHART_PATH
+              value: /app/charts/store
+            - name: STORE_BASE_DOMAIN
+              value: {{ .Values.provisioner.baseDomain | quote }}
+            - name: STORE_URL_SCHEME
+              value: {{ .Values.provisioner.urlScheme | quote }}
+            - name: STORE_URL_PORT
+              value: {{ .Values.provisioner.urlPort | quote }}
+            - name: STORE_MAX_PER_USER
+              value: {{ .Values.provisioner.maxStoresPerUser | quote }}
+            - name: STORE_NAMESPACE_PREFIX
+              value: {{ .Values.provisioner.namespacePrefix | quote }}
+            - name: GATEWAY_NAMESPACE
+              value: {{ .Release.Namespace | quote }}
+            - name: PROVISIONER_SERVICE_ACCOUNT
+              value: {{ include "platform.fullname" . }}-provisioner
+            - name: STORE_OPERATOR_CLUSTERROLE
+              value: {{ include "platform.fullname" . }}-store-operator
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 3
+          resources:
+            {{- toYaml .Values.provisioner.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 1000
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "platform.fullname" . }}-provisioner
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: {{ .Values.provisioner.port }}
+      targetPort: http
+  selector:
+    {{- include "platform.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: provisioner

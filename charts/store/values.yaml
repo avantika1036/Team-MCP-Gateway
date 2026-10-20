@@ -62,7 +62,7 @@ mcp:
   enabled: true
   image:
     repository: urumi/woocommerce-mcp
-    tag: '0.1.2'
+    tag: '0.1.7'
     pullPolicy: IfNotPresent
   port: 3002
   requestTimeoutMs: 10000

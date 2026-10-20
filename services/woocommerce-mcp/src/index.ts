@@ -87,7 +87,10 @@ function buildMcpServer(): McpServer {
       description:
         'List products from the connected WooCommerce store, optionally filtering by search text. Results include product IDs and prices.',
       inputSchema: z.object({
-        search: z.string().trim().min(1).max(100).optional(),
+        // An empty search string is valid: callers often use it to mean
+        // "list all products". Do not emit minLength: 1 in the JSON schema,
+        // because the LLM provider validates tool arguments before execution.
+        search: z.string().trim().max(100).optional(),
         page: z.number().int().min(1).max(1000).default(1),
         per_page: z.number().int().min(1).max(100).default(20),
       }),
@@ -95,10 +98,16 @@ function buildMcpServer(): McpServer {
     async ({ search, page, per_page }) =>
       safely(async () => {
         const products = await woo.request<WooProduct[]>('GET', 'products', {
-          search,
+          search: search?.trim() || undefined,
           page,
           per_page,
         });
+
+        if (!Array.isArray(products)) {
+          throw new Error(
+            'WooCommerce API returned an unexpected product-list response instead of a JSON array.',
+          );
+        }
 
         return {
           page,

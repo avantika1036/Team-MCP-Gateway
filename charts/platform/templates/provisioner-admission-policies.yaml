@@ -1,0 +1,74 @@
+{{- $provisionerUsername := printf "system:serviceaccount:%s:%s" .Release.Namespace (printf "%s-provisioner" (include "platform.fullname" .)) -}}
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: {{ include "platform.fullname" . }}-provisioner-namespace-guard
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "DELETE"]
+        resources: ["namespaces"]
+  matchConditions:
+    - name: request-from-provisioner
+      expression: {{ printf "request.userInfo.username == %q" $provisionerUsername | quote }}
+  validations:
+    - expression: >-
+        request.operation == 'DELETE'
+        ? oldObject.metadata.name.startsWith({{ .Values.provisioner.namespacePrefix | quote }})
+        : object.metadata.name.startsWith({{ .Values.provisioner.namespacePrefix | quote }})
+      message: "The Urumi provisioner may only create or delete namespaces using the configured store namespace prefix."
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: {{ include "platform.fullname" . }}-provisioner-namespace-guard
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+spec:
+  policyName: {{ include "platform.fullname" . }}-provisioner-namespace-guard
+  validationActions: [Deny]
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: {{ include "platform.fullname" . }}-provisioner-rolebinding-guard
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["rbac.authorization.k8s.io"]
+        apiVersions: ["v1"]
+        operations: ["CREATE"]
+        resources: ["rolebindings"]
+  matchConditions:
+    - name: request-from-provisioner
+      expression: {{ printf "request.userInfo.username == %q" $provisionerUsername | quote }}
+  validations:
+    - expression: >-
+        object.metadata.namespace.startsWith({{ .Values.provisioner.namespacePrefix | quote }})
+        && object.roleRef.apiGroup == 'rbac.authorization.k8s.io'
+        && object.roleRef.kind == 'ClusterRole'
+        && object.roleRef.name == {{ printf "%s-store-operator" (include "platform.fullname" .) | quote }}
+        && object.subjects.size() == 1
+        && object.subjects.all(s,
+          s.kind == 'ServiceAccount'
+          && s.name == {{ printf "%s-provisioner" (include "platform.fullname" .) | quote }}
+          && s.namespace == {{ .Release.Namespace | quote }})
+      message: "The Urumi provisioner may only bind its store-operator role to its own ServiceAccount in a managed store namespace."
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: {{ include "platform.fullname" . }}-provisioner-rolebinding-guard
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+spec:
+  policyName: {{ include "platform.fullname" . }}-provisioner-rolebinding-guard
+  validationActions: [Deny]

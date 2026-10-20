@@ -73,6 +73,15 @@ const createKeySchema = z.object({
   keyName: z.string().trim().min(1).max(100),
 });
 
+const createStoreSchema = z.object({
+  slug: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .regex(/^[a-z][a-z0-9-]{1,19}$/),
+  displayName: z.string().trim().min(2).max(80),
+});
+
 const chatRequestSchema = z.object({
   messages: z
     .array(
@@ -642,6 +651,215 @@ app.post('/api/admin/servers/:id/refresh', requireAdmin, async (request, respons
 
   const status = runtimeStatus.get(id);
   response.json({ id, status: status ?? null });
+});
+
+class ProvisionerHttpError extends Error {
+  constructor(
+    message: string,
+    readonly statusCode: number,
+  ) {
+    super(message);
+  }
+}
+
+async function callProvisioner(path: string, method = 'GET', body?: unknown): Promise<any> {
+  if (!config.provisionerUrl || !config.provisionerToken) {
+    throw new ProvisionerHttpError('Store provisioning is not configured.', 503);
+  }
+
+  let upstreamResponse: Response;
+  try {
+    upstreamResponse = await fetch(`${config.provisionerUrl}${path}`, {
+      method,
+      headers: {
+        Authorization: `Bearer ${config.provisionerToken}`,
+        Accept: 'application/json',
+        ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      signal: AbortSignal.timeout(15 * 60 * 1000),
+    });
+  } catch (error) {
+    throw new ProvisionerHttpError(`Provisioner is unavailable: ${messageOf(error)}`, 502);
+  }
+
+  const raw = await upstreamResponse.text();
+  let payload: any = {};
+  try {
+    payload = raw ? JSON.parse(raw) : {};
+  } catch {
+    payload = { error: 'Provisioner returned an invalid response.' };
+  }
+
+  if (!upstreamResponse.ok) {
+    throw new ProvisionerHttpError(
+      typeof payload.error === 'string'
+        ? payload.error
+        : `Provisioner returned HTTP ${upstreamResponse.status}.`,
+      upstreamResponse.status,
+    );
+  }
+  return payload;
+}
+
+app.get('/api/admin/stores', requireAdmin, async (_request, response) => {
+  try {
+    const result = await callProvisioner('/stores');
+    const servers = await registry.list();
+    response.json({
+      stores: (result.stores ?? []).map((store: Record<string, unknown>) => {
+        const upstream = servers.find((server) => server.id === store.upstreamId);
+        return {
+          ...store,
+          upstream: upstream ? serverWithStatus(upstream) : null,
+        };
+      }),
+      maxStoresPerUser: result.maxStoresPerUser ?? null,
+    });
+  } catch (error) {
+    const status = error instanceof ProvisionerHttpError ? error.statusCode : 500;
+    response.status(status).json({ error: messageOf(error) });
+  }
+});
+
+app.post('/api/admin/stores', requireAdmin, async (request, response) => {
+  const parsed = createStoreSchema.safeParse(request.body);
+  if (!parsed.success) {
+    response
+      .status(400)
+      .json({ error: 'Invalid store configuration.', details: parsed.error.issues });
+    return;
+  }
+
+  const supplied = request.header('authorization')?.match(/^Bearer\s+(.+)$/i)?.[1] ?? '';
+  let identity: AuthenticatedIdentity | null = null;
+  if (!constantTimeEqual(supplied, config.adminToken)) {
+    try {
+      identity = await authenticateApiKey(supplied);
+    } catch (error) {
+      response
+        .status(503)
+        .json({ error: `Could not resolve store owner identity: ${messageOf(error)}` });
+      return;
+    }
+    if (!identity || identity.role !== 'admin') {
+      response.status(403).json({ error: 'Administrator role required.' });
+      return;
+    }
+  }
+  if (!identity) {
+    response.status(403).json({
+      error:
+        'Store provisioning requires a database-backed admin API key so store ownership and per-user limits can be enforced.',
+    });
+    return;
+  }
+
+  let provisioned: any;
+  try {
+    provisioned = await callProvisioner('/stores', 'POST', {
+      ...parsed.data,
+      ownerUserId: identity?.userId ?? null,
+      ownerEmail: identity?.email ?? null,
+    });
+
+    const store = provisioned.store;
+    if (!store || typeof store.upstreamId !== 'string' || typeof store.mcpUrl !== 'string') {
+      throw new Error('Provisioner did not return a complete store record.');
+    }
+
+    const mcpUrl = validateUpstreamUrl(store.mcpUrl);
+    const current = (await registry.list()).find((server) => server.id === store.upstreamId);
+    const server = current
+      ? await registry.update(store.upstreamId, {
+          name: store.displayName,
+          url: mcpUrl,
+          enabled: true,
+        })
+      : await registry.add({
+          id: store.upstreamId,
+          name: store.displayName,
+          url: mcpUrl,
+          enabled: true,
+        });
+
+    if (!server) throw new Error('Could not register the new store upstream.');
+    await refreshToolSnapshot();
+
+    response.status(201).json({
+      store: {
+        ...store,
+        upstream: serverWithStatus(server),
+      },
+    });
+  } catch (error) {
+    const status = error instanceof ProvisionerHttpError ? error.statusCode : 502;
+    if (provisioned?.store?.slug) {
+      try {
+        await registry.remove(String(provisioned.store.upstreamId));
+        await callProvisioner(
+          `/stores/${encodeURIComponent(String(provisioned.store.slug))}`,
+          'DELETE',
+        );
+        await refreshToolSnapshot();
+      } catch (rollbackError) {
+        console.error('Store creation rollback failed:', messageOf(rollbackError));
+      }
+    }
+    response.status(status).json({ error: messageOf(error) });
+  }
+});
+
+app.delete('/api/admin/stores/:slug', requireAdmin, async (request, response) => {
+  const slug = z
+    .string()
+    .regex(/^[a-z][a-z0-9-]{1,19}$/)
+    .safeParse(request.params.slug);
+  if (!slug.success) {
+    response.status(400).json({ error: 'Invalid store ID.' });
+    return;
+  }
+
+  let store: any;
+  try {
+    const result = await callProvisioner('/stores');
+    store = (result.stores ?? []).find(
+      (entry: Record<string, unknown>) => entry.slug === slug.data,
+    );
+    if (!store) {
+      response.status(404).json({ error: 'Store not found.' });
+      return;
+    }
+
+    const registered = (await registry.list()).find((server) => server.id === store.upstreamId);
+    if (registered) {
+      await registry.update(store.upstreamId, { enabled: false });
+      await refreshToolSnapshot();
+    }
+
+    const resultDeleted = await callProvisioner(
+      `/stores/${encodeURIComponent(slug.data)}`,
+      'DELETE',
+    );
+    await registry.remove(String(store.upstreamId));
+    runtimeStatus.delete(String(store.upstreamId));
+    await refreshToolSnapshot();
+    response.json({ store: resultDeleted.store ?? store, deleted: true });
+  } catch (error) {
+    if (store?.upstreamId) {
+      try {
+        await registry.update(String(store.upstreamId), { enabled: true });
+        await refreshToolSnapshot();
+      } catch (restoreError) {
+        console.error(
+          'Could not restore store upstream after deletion error:',
+          messageOf(restoreError),
+        );
+      }
+    }
+    const status = error instanceof ProvisionerHttpError ? error.statusCode : 500;
+    response.status(status).json({ error: messageOf(error) });
+  }
 });
 
 app.get('/api/session', async (request, response) => {

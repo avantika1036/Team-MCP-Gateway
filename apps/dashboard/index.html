@@ -832,6 +832,7 @@
               <span class="nav-icon">◈</span>Overview
             </button>
             <button data-page="upstreams"><span class="nav-icon">⇄</span>Upstreams</button>
+            <button data-page="stores"><span class="nav-icon">▣</span>Stores</button>
             <button data-page="users"><span class="nav-icon">♙</span>Users & keys</button>
             <button data-page="audit"><span class="nav-icon">▤</span>Audit trail</button>
             <button id="chatNavBtn" type="button">
@@ -986,6 +987,69 @@
               </div>
             </form>
             <div id="serversTable"><div class="empty">Loading servers…</div></div>
+          </section>
+        </section>
+
+        <section id="page-stores" class="page">
+          <div class="page-heading">
+            <div>
+              <div class="eyebrow">Tenant operations</div>
+              <h1>WooCommerce stores</h1>
+              <p>Provision isolated stores, register their MCP tools, and tear them down safely.</p>
+            </div>
+          </div>
+          <section class="card">
+            <div class="toolbar">
+              <div>
+                <h2>Store fleet</h2>
+                <p>
+                  Each store receives a dedicated namespace, database, Secrets, persistent volumes,
+                  ingress, and MCP server.
+                </p>
+              </div>
+              <div class="toolbar-actions">
+                <button id="toggleAddStore" class="btn primary">+ Create store</button>
+              </div>
+            </div>
+            <form id="addStoreForm" class="inline-form hidden">
+              <h3>Provision an isolated store</h3>
+              <div class="form-grid">
+                <div>
+                  <label for="storeSlug">Store ID</label>
+                  <input
+                    id="storeSlug"
+                    required
+                    pattern="[a-z][a-z0-9-]{1,19}"
+                    maxlength="20"
+                    placeholder="for example, north-shop"
+                  />
+                  <div class="field-note">
+                    Lowercase letters, numbers and hyphens; must start with a letter.
+                  </div>
+                </div>
+                <div>
+                  <label for="storeDisplayName">Display name</label>
+                  <input
+                    id="storeDisplayName"
+                    required
+                    minlength="2"
+                    maxlength="80"
+                    placeholder="North Shop"
+                  />
+                </div>
+              </div>
+              <div class="section-note" style="margin-top: 10px">
+                Provisioning may take several minutes. Store credentials are generated server-side.
+                Deleted stores lose their resources and data; export anything you need first.
+              </div>
+              <div class="form-actions">
+                <button type="button" id="cancelAddStore" class="btn">Cancel</button>
+                <button type="submit" id="createStoreSubmit" class="btn primary">
+                  Create isolated store
+                </button>
+              </div>
+            </form>
+            <div id="storesTable"><div class="empty">Loading provisioned stores…</div></div>
           </section>
         </section>
 
@@ -1145,6 +1209,7 @@
         const state = {
           token: '',
           servers: [],
+          stores: [],
           users: [],
           events: [],
           selectedUser: null,
@@ -1203,7 +1268,7 @@
           $('#appView').classList.remove('hidden');
         }
         function navigate(page) {
-          if (!['overview', 'upstreams', 'users', 'audit'].includes(page)) return;
+          if (!['overview', 'upstreams', 'stores', 'users', 'audit'].includes(page)) return;
           state.currentPage = page;
           $$('.page').forEach((node) =>
             node.classList.toggle('active', node.id === `page-${page}`),
@@ -1214,17 +1279,20 @@
           $('#breadcrumb').textContent = {
             overview: 'Overview',
             upstreams: 'Upstreams',
+            stores: 'Stores',
             users: 'Users & keys',
             audit: 'Audit trail',
           }[page];
         }
         async function refreshData() {
-          const [serverData, userData, eventData] = await Promise.all([
+          const [serverData, storeData, userData, eventData] = await Promise.all([
             api('/api/admin/servers'),
+            api('/api/admin/stores'),
             api('/api/admin/users'),
             api('/api/admin/audit-events?limit=50'),
           ]);
           state.servers = serverData.servers || [];
+          state.stores = storeData.stores || [];
           state.users = userData.users || [];
           state.events = eventData.events || [];
           renderAll();
@@ -1245,6 +1313,7 @@
           renderOverviewServers();
           renderOverviewAudit();
           renderServers();
+          renderStores();
           renderUsers();
           renderAudit();
         }
@@ -1291,6 +1360,36 @@
           }
           target.innerHTML = `<div class="table-wrap"><table><thead><tr><th>Server</th><th>Status</th><th>Tools</th><th>Last checked</th><th>Actions</th></tr></thead><tbody>${rows.map((s) => `<tr><td><div class="server-name">${escapeHtml(s.name)}</div><div class="server-url">${escapeHtml(s.url)}</div><div class="key-meta">ID: ${escapeHtml(s.id)}${s.status?.lastError ? ` · ${escapeHtml(s.status.lastError)}` : ''}</div></td><td>${statusBadge(s)}</td><td><strong>${s.enabled && s.status?.reachable ? Number(s.status.toolCount || 0) : 0}</strong></td><td>${escapeHtml(prettyTime(s.status?.lastCheckedAt))}</td><td><div class="actions"><button class="btn small" data-action="toggle-server" data-id="${escapeHtml(s.id)}" data-enabled="${!s.enabled}">${s.enabled ? 'Disable' : 'Enable'}</button><button class="btn small" data-action="refresh-server" data-id="${escapeHtml(s.id)}">Refresh</button><button class="btn small" data-action="edit-server" data-id="${escapeHtml(s.id)}">Edit</button><button class="btn small danger" data-action="delete-server" data-id="${escapeHtml(s.id)}">Delete</button></div></td></tr>`).join('')}</tbody></table></div>`;
         }
+
+        function renderStores() {
+          const node = $('#storesTable');
+          if (!state.stores.length) {
+            node.innerHTML =
+              '<div class="empty"><strong>No additional stores</strong>Create a store to provision an isolated WooCommerce environment and register its MCP tools.</div>';
+            return;
+          }
+          node.innerHTML = `<div class="table-wrap"><table><thead><tr><th>Store</th><th>Provisioning</th><th>Storefront</th><th>MCP upstream</th><th>Owner</th><th>Actions</th></tr></thead><tbody>${state.stores
+            .map((store) => {
+              const status = String(store.status || 'unknown');
+              const cls =
+                status === 'ready' ? 'success' : status === 'failed' ? 'danger' : 'warning';
+              const upstream = store.upstream;
+              const upstreamText = upstream
+                ? upstream.enabled && upstream.status?.reachable
+                  ? `${Number(upstream.status.toolCount || 0)} tools · reachable`
+                  : upstream.enabled
+                    ? 'Unreachable'
+                    : 'Disabled'
+                : 'Not registered';
+              const error = store.errorMessage
+                ? `<div class="key-meta" title="${escapeHtml(store.errorMessage)}">${escapeHtml(String(store.errorMessage).slice(0, 110))}</div>`
+                : '';
+              const canDelete = status === 'ready' || status === 'failed';
+              return `<tr><td><div class="server-name">${escapeHtml(store.displayName)}</div><div class="key-meta">${escapeHtml(store.slug)} · ${escapeHtml(store.namespace)}</div></td><td><span class="badge ${cls}">${escapeHtml(status)}</span>${error}</td><td><a href="${escapeHtml(store.siteUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(store.host)}</a></td><td><div>${escapeHtml(store.upstreamId)}</div><div class="key-meta">${escapeHtml(upstreamText)}</div></td><td>${escapeHtml(store.ownerEmail || 'Bootstrap administrator')}</td><td>${canDelete ? `<button class="btn small danger" data-action="delete-store" data-id="${escapeHtml(store.slug)}" data-name="${escapeHtml(store.displayName)}">Delete store</button>` : '—'}</td></tr>`;
+            })
+            .join('')}</tbody></table></div>`;
+        }
+
         function renderUsers() {
           const filter = ($('#userSearch')?.value || '').toLowerCase();
           const rows = state.users.filter((u) =>
@@ -1432,6 +1531,41 @@
         $('#closeKeysPanel').addEventListener('click', () =>
           $('#keysPanel').classList.add('hidden'),
         );
+
+        $('#toggleAddStore').addEventListener('click', () =>
+          $('#addStoreForm').classList.toggle('hidden'),
+        );
+        $('#cancelAddStore').addEventListener('click', () =>
+          $('#addStoreForm').classList.add('hidden'),
+        );
+        $('#addStoreForm').addEventListener('submit', async (event) => {
+          event.preventDefault();
+          const button = $('#createStoreSubmit');
+          const body = {
+            slug: $('#storeSlug').value.trim().toLowerCase(),
+            displayName: $('#storeDisplayName').value.trim(),
+          };
+          button.disabled = true;
+          button.textContent = 'Provisioning…';
+          toast('Provisioning store. This can take several minutes.');
+          try {
+            const result = await api('/api/admin/stores', {
+              method: 'POST',
+              body: JSON.stringify(body),
+            });
+            $('#addStoreForm').reset();
+            $('#addStoreForm').classList.add('hidden');
+            await refreshData();
+            navigate('stores');
+            toast(`Store ${result.store?.slug || body.slug} provisioned.`);
+          } catch (error) {
+            toast(error.message, true);
+          } finally {
+            button.disabled = false;
+            button.textContent = 'Create isolated store';
+          }
+        });
+
         $('#addServerForm').addEventListener('submit', async (event) => {
           event.preventDefault();
           const body = {
@@ -1511,7 +1645,19 @@
           const action = button.dataset.action;
           const id = button.dataset.id;
           try {
-            if (action === 'toggle-server') {
+            if (action === 'delete-store') {
+              const displayName = button.dataset.name || id;
+              if (
+                !window.confirm(
+                  `Permanently delete '${displayName}' and its Kubernetes resources? This also deletes the store's persistent data.`,
+                )
+              )
+                return;
+              button.disabled = true;
+              await api(`/api/admin/stores/${encodeURIComponent(id)}`, { method: 'DELETE' });
+              await refreshData();
+              toast(`Store ${id} deleted and its MCP tools removed.`);
+            } else if (action === 'toggle-server') {
               await api(`/api/admin/servers/${encodeURIComponent(id)}/enabled`, {
                 method: 'PATCH',
                 body: JSON.stringify({ enabled: button.dataset.enabled === 'true' }),
