@@ -1214,7 +1214,7 @@
               </div>
             </div>
             <form id="addServerForm" class="inline-form hidden">
-              <h3>Register an upstream MCP server</h3>
+              <h3 id="serverFormTitle">Register an upstream MCP server</h3>
               <div class="form-grid">
                 <div>
                   <label for="serverId">Server ID</label
@@ -1238,14 +1238,45 @@
                     placeholder="http://service.namespace.svc.cluster.local:4000/mcp"
                   />
                 </div>
+                <div>
+                  <label for="serverAuthType">Authentication</label>
+                  <select id="serverAuthType">
+                    <option value="none">No authentication</option>
+                    <option value="bearer">Bearer token</option>
+                    <option value="header">Custom header</option>
+                    <option value="keep" hidden>Keep existing authentication</option>
+                  </select>
+                </div>
+                <div id="serverHeaderNameField" class="hidden">
+                  <label for="serverHeaderName">Credential header name</label>
+                  <input id="serverHeaderName" maxlength="100" placeholder="X-API-Key" />
+                </div>
+                <div id="serverCredentialField" class="span-2 hidden">
+                  <label for="serverCredential">Credential value</label>
+                  <input
+                    id="serverCredential"
+                    type="password"
+                    autocomplete="new-password"
+                    maxlength="4096"
+                    placeholder="Paste the upstream token or key"
+                  />
+                </div>
               </div>
+              <div
+                id="serverAuthCurrent"
+                class="section-note hidden"
+                style="margin-top: 10px"
+              ></div>
               <div class="section-note" style="margin-top: 10px">
-                The gateway validates upstream URLs against its configured host allowlist. Use
+                Credentials are stored in a Kubernetes Secret and are never returned to the browser
+                after saving. The gateway applies them only to requests for this upstream. Use
                 in-cluster service DNS names for Kubernetes deployments.
               </div>
               <div class="form-actions">
                 <button type="button" id="cancelAddServer" class="btn">Cancel</button
-                ><button type="submit" class="btn primary">Register server</button>
+                ><button id="submitServerForm" type="submit" class="btn primary">
+                  Register server
+                </button>
               </div>
             </form>
             <div id="serversTable"><div class="empty">Loading servers…</div></div>
@@ -1475,6 +1506,7 @@
           users: [],
           events: [],
           selectedUser: null,
+          editingServerId: null,
           currentPage: 'overview',
           toastTimer: null,
         };
@@ -1496,6 +1528,26 @@
             outcome === 'success' ? 'success' : outcome === 'error' ? 'danger' : 'warning';
           return `<span class="badge ${cls} audit-outcome">${escapeHtml(outcome || 'unknown')}</span>`;
         };
+        function updateServerAuthFields() {
+          const authType = $('#serverAuthType').value;
+          const needsCredential = authType === 'bearer' || authType === 'header';
+          $('#serverCredentialField').classList.toggle('hidden', !needsCredential);
+          $('#serverCredential').required = needsCredential;
+          $('#serverHeaderNameField').classList.toggle('hidden', authType !== 'header');
+          $('#serverHeaderName').required = authType === 'header';
+        }
+        function resetServerForm() {
+          const form = $('#addServerForm');
+          form.reset();
+          state.editingServerId = null;
+          $('#serverId').disabled = false;
+          $('#serverAuthType').querySelector('option[value="keep"]').hidden = true;
+          $('#serverAuthType').value = 'none';
+          $('#serverFormTitle').textContent = 'Register an upstream MCP server';
+          $('#submitServerForm').textContent = 'Register server';
+          $('#serverAuthCurrent').classList.add('hidden');
+          updateServerAuthFields();
+        }
         function toast(message, bad = false) {
           const node = $('#toast');
           node.textContent = message;
@@ -1620,7 +1672,7 @@
               '<div class="empty"><strong>No matching servers</strong>Try another search or register a new upstream.</div>';
             return;
           }
-          target.innerHTML = `<div class="table-wrap"><table><thead><tr><th>Server</th><th>Status</th><th>Tools</th><th>Last checked</th><th>Actions</th></tr></thead><tbody>${rows.map((s) => `<tr><td><div class="server-name">${escapeHtml(s.name)}</div><div class="server-url">${escapeHtml(s.url)}</div><div class="key-meta">ID: ${escapeHtml(s.id)}${s.status?.lastError ? ` · ${escapeHtml(s.status.lastError)}` : ''}</div></td><td>${statusBadge(s)}</td><td><strong>${s.enabled && s.status?.reachable ? Number(s.status.toolCount || 0) : 0}</strong></td><td>${escapeHtml(prettyTime(s.status?.lastCheckedAt))}</td><td><div class="actions"><button class="btn small" data-action="toggle-server" data-id="${escapeHtml(s.id)}" data-enabled="${!s.enabled}">${s.enabled ? 'Disable' : 'Enable'}</button><button class="btn small" data-action="refresh-server" data-id="${escapeHtml(s.id)}">Refresh</button><button class="btn small" data-action="edit-server" data-id="${escapeHtml(s.id)}">Edit</button><button class="btn small danger" data-action="delete-server" data-id="${escapeHtml(s.id)}">Delete</button></div></td></tr>`).join('')}</tbody></table></div>`;
+          target.innerHTML = `<div class="table-wrap"><table><thead><tr><th>Server</th><th>Status</th><th>Tools</th><th>Last checked</th><th>Actions</th></tr></thead><tbody>${rows.map((s) => `<tr><td><div class="server-name">${escapeHtml(s.name)}</div><div class="server-url">${escapeHtml(s.url)}</div><div class="key-meta">ID: ${escapeHtml(s.id)}${s.authConfigured ? ` · Auth: ${escapeHtml(s.authType === 'header' ? s.authHeaderName : 'Bearer token')}` : ''}${s.status?.lastError ? ` · ${escapeHtml(s.status.lastError)}` : ''}</div></td><td>${statusBadge(s)}</td><td><strong>${s.enabled && s.status?.reachable ? Number(s.status.toolCount || 0) : 0}</strong></td><td>${escapeHtml(prettyTime(s.status?.lastCheckedAt))}</td><td><div class="actions"><button class="btn small" data-action="toggle-server" data-id="${escapeHtml(s.id)}" data-enabled="${!s.enabled}">${s.enabled ? 'Disable' : 'Enable'}</button><button class="btn small" data-action="refresh-server" data-id="${escapeHtml(s.id)}">Refresh</button><button class="btn small" data-action="edit-server" data-id="${escapeHtml(s.id)}">Edit</button><button class="btn small danger" data-action="delete-server" data-id="${escapeHtml(s.id)}">Delete</button></div></td></tr>`).join('')}</tbody></table></div>`;
         }
 
         function renderStores() {
@@ -1778,12 +1830,21 @@
         $$('[data-navigate]').forEach((button) =>
           button.addEventListener('click', () => navigate(button.dataset.navigate)),
         );
-        $('#toggleAddServer').addEventListener('click', () =>
-          $('#addServerForm').classList.toggle('hidden'),
-        );
-        $('#cancelAddServer').addEventListener('click', () =>
-          $('#addServerForm').classList.add('hidden'),
-        );
+        $('#toggleAddServer').addEventListener('click', () => {
+          const form = $('#addServerForm');
+          if (form.classList.contains('hidden')) {
+            resetServerForm();
+            form.classList.remove('hidden');
+          } else {
+            form.classList.add('hidden');
+          }
+        });
+        $('#cancelAddServer').addEventListener('click', () => {
+          resetServerForm();
+          $('#addServerForm').classList.add('hidden');
+        });
+        $('#serverAuthType').addEventListener('change', updateServerAuthFields);
+        updateServerAuthFields();
         $('#toggleAddUser').addEventListener('click', () =>
           $('#addUserForm').classList.toggle('hidden'),
         );
@@ -1830,18 +1891,43 @@
 
         $('#addServerForm').addEventListener('submit', async (event) => {
           event.preventDefault();
+          const isEditing = Boolean(state.editingServerId);
+          const authType = $('#serverAuthType').value;
           const body = {
-            id: $('#serverId').value.trim(),
             name: $('#serverName').value.trim(),
             url: $('#serverUrl').value.trim(),
-            enabled: true,
           };
+          if (!isEditing) {
+            body.id = $('#serverId').value.trim();
+            body.enabled = true;
+          }
+          if (authType === 'bearer' || authType === 'header') {
+            const credential = $('#serverCredential').value;
+            if (!credential.trim()) {
+              toast('Enter the upstream credential value.', true);
+              return;
+            }
+            body.auth =
+              authType === 'bearer'
+                ? { type: 'bearer', credential }
+                : {
+                    type: 'header',
+                    headerName: $('#serverHeaderName').value.trim(),
+                    credential,
+                  };
+          } else if (isEditing && authType === 'none') {
+            body.auth = null;
+          }
+
           try {
-            await api('/api/admin/servers', { method: 'POST', body: JSON.stringify(body) });
-            $('#addServerForm').reset();
+            const path = isEditing
+              ? `/api/admin/servers/${encodeURIComponent(state.editingServerId)}`
+              : '/api/admin/servers';
+            await api(path, { method: isEditing ? 'PUT' : 'POST', body: JSON.stringify(body) });
+            resetServerForm();
             $('#addServerForm').classList.add('hidden');
             await refreshData();
-            toast('Upstream registered.');
+            toast(isEditing ? 'Upstream updated.' : 'Upstream registered.');
           } catch (error) {
             toast(error.message, true);
           }
@@ -1933,16 +2019,28 @@
             } else if (action === 'edit-server') {
               const server = state.servers.find((item) => item.id === id);
               if (!server) return;
-              const name = window.prompt('Display name:', server.name);
-              if (name === null) return;
-              const url = window.prompt('MCP endpoint URL:', server.url);
-              if (url === null) return;
-              await api(`/api/admin/servers/${encodeURIComponent(id)}`, {
-                method: 'PUT',
-                body: JSON.stringify({ name: name.trim(), url: url.trim() }),
-              });
-              await refreshData();
-              toast('Upstream updated.');
+              resetServerForm();
+              state.editingServerId = id;
+              $('#serverId').value = server.id;
+              $('#serverId').disabled = true;
+              $('#serverName').value = server.name;
+              $('#serverUrl').value = server.url;
+              const keepOption = $('#serverAuthType').querySelector('option[value="keep"]');
+              keepOption.hidden = !server.authConfigured;
+              $('#serverAuthType').value = server.authConfigured ? 'keep' : 'none';
+              if (server.authConfigured) {
+                const authDescription =
+                  server.authType === 'header'
+                    ? `Current authentication: custom header ${server.authHeaderName}. Choose a new authentication type to rotate the credential, or choose No authentication to remove it.`
+                    : 'Current authentication: bearer token. Choose a new authentication type to rotate the credential, or choose No authentication to remove it.';
+                $('#serverAuthCurrent').textContent = authDescription;
+                $('#serverAuthCurrent').classList.remove('hidden');
+              }
+              $('#serverFormTitle').textContent = `Edit upstream: ${server.name}`;
+              $('#submitServerForm').textContent = 'Save changes';
+              $('#addServerForm').classList.remove('hidden');
+              updateServerAuthFields();
+              $('#addServerForm').scrollIntoView({ behavior: 'smooth', block: 'center' });
             } else if (action === 'delete-server') {
               const server = state.servers.find((item) => item.id === id);
               if (

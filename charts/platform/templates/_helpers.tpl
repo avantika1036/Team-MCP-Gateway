@@ -15,6 +15,10 @@
 {{- end -}}
 {{- end -}}
 
+{{- define "platform.upstreamCredentialsSecretName" -}}
+{{- printf "%s-upstream-credentials" (include "platform.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
 {{- define "platform.selectorLabels" -}}
 app.kubernetes.io/name: {{ include "platform.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}

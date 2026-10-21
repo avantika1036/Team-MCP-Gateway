@@ -13,6 +13,8 @@ const urlScheme = (process.env.STORE_URL_SCHEME ?? 'http').trim().toLowerCase();
 const urlPort = (process.env.STORE_URL_PORT ?? '8080').trim();
 const maxStoresPerUser = Number(process.env.STORE_MAX_PER_USER ?? '3');
 const gatewayNamespace = process.env.GATEWAY_NAMESPACE ?? 'urumi-platform';
+const upstreamCredentialsSecretName =
+  process.env.UPSTREAM_CREDENTIALS_SECRET ?? 'urumi-platform-upstream-credentials';
 const provisionerServiceAccount =
   process.env.PROVISIONER_SERVICE_ACCOUNT ?? 'urumi-platform-provisioner';
 const storeOperatorClusterRole =
@@ -34,6 +36,7 @@ if (!Number.isInteger(maxStoresPerUser) || maxStoresPerUser < 1 || maxStoresPerU
 }
 
 const pool = new Pool({ connectionString: databaseUrl, max: 5, connectionTimeoutMillis: 5000 });
+let upstreamCredentialQueue: Promise<void> = Promise.resolve();
 pool.on('error', (error: Error) =>
   console.error('Provisioner PostgreSQL pool error:', error.message),
 );
@@ -114,6 +117,92 @@ function randomPassword(bytes = 32): string {
 
 function base64(value: string): string {
   return Buffer.from(value, 'utf8').toString('base64');
+}
+
+function credentialKeyForUpstream(id: string): string {
+  if (!/^[a-z][a-z0-9-]{1,31}$/.test(id)) throw new Error('Invalid upstream ID.');
+  return `credential-${id}`;
+}
+
+function withCredentialQueue<T>(operation: () => Promise<T>): Promise<T> {
+  const result = upstreamCredentialQueue.then(operation, operation);
+  upstreamCredentialQueue = result.then(
+    () => undefined,
+    () => undefined,
+  );
+  return result;
+}
+
+async function readUpstreamCredentials(): Promise<Record<string, string>> {
+  let stdout: string;
+  try {
+    ({ stdout } = await runCommand(
+      'kubectl',
+      ['get', 'secret', upstreamCredentialsSecretName, '-n', gatewayNamespace, '-o', 'json'],
+      undefined,
+      30000,
+    ));
+  } catch (error) {
+    if (/not found/i.test(safeError(error))) return {};
+    throw new Error('Could not read the upstream credential Secret.');
+  }
+
+  try {
+    const secret = JSON.parse(stdout) as { data?: Record<string, unknown> };
+    const values: Record<string, string> = {};
+    for (const [key, encoded] of Object.entries(secret.data ?? {})) {
+      if (!key.startsWith('credential-') || typeof encoded !== 'string') continue;
+      values[key] = Buffer.from(encoded, 'base64').toString('utf8');
+    }
+    return values;
+  } catch {
+    throw new Error('The upstream credential Secret is malformed.');
+  }
+}
+
+async function writeUpstreamCredentials(values: Record<string, string>): Promise<void> {
+  if (Object.keys(values).length === 0) {
+    try {
+      await runCommand(
+        'kubectl',
+        [
+          'delete',
+          'secret',
+          upstreamCredentialsSecretName,
+          '-n',
+          gatewayNamespace,
+          '--ignore-not-found=true',
+        ],
+        undefined,
+        30000,
+      );
+    } catch {
+      throw new Error('Could not remove the empty upstream credential Secret.');
+    }
+    return;
+  }
+
+  const secret = {
+    apiVersion: 'v1',
+    kind: 'Secret',
+    metadata: {
+      name: upstreamCredentialsSecretName,
+      namespace: gatewayNamespace,
+      labels: {
+        'app.kubernetes.io/managed-by': 'urumi-provisioner',
+        'app.kubernetes.io/component': 'upstream-credentials',
+      },
+    },
+    type: 'Opaque',
+    data: Object.fromEntries(Object.entries(values).map(([key, value]) => [key, base64(value)])),
+  };
+
+  try {
+    await applyYaml(JSON.stringify(secret));
+  } catch {
+    // Never include the submitted credential or serialized Secret in errors/logs.
+    throw new Error('Could not write the upstream credential Secret.');
+  }
 }
 
 function runCommand(
@@ -451,6 +540,77 @@ async function findStore(slug: string): Promise<StoreRecord | null> {
 app.get('/healthz', (_request, response) =>
   response.json({ status: 'ok', service: 'urumi-provisioner' }),
 );
+
+const upstreamCredentialBodySchema = z.object({
+  credential: z
+    .string()
+    .min(1)
+    .max(4096)
+    .refine((value) => value.trim().length > 0, 'Credential must not be empty.'),
+});
+const upstreamIdSchema = z.string().regex(/^[a-z][a-z0-9-]{1,31}$/);
+
+app.use('/upstream-credentials', requireInternalToken);
+app.get('/upstream-credentials/:id', async (request, response) => {
+  const parsedId = upstreamIdSchema.safeParse(request.params.id);
+  if (!parsedId.success) {
+    response.status(400).json({ error: 'Invalid upstream ID.' });
+    return;
+  }
+
+  try {
+    const key = credentialKeyForUpstream(parsedId.data);
+    const values = await readUpstreamCredentials();
+    const credential = values[key];
+    if (!credential) {
+      response.status(404).json({ error: 'Upstream credential not found.' });
+      return;
+    }
+    // This endpoint is internal-token-only and returns exactly one credential to the gateway.
+    response.json({ credential });
+  } catch {
+    response.status(503).json({ error: 'Could not read upstream credential.' });
+  }
+});
+
+app.put('/upstream-credentials/:id', async (request, response) => {
+  const parsedId = upstreamIdSchema.safeParse(request.params.id);
+  const parsedBody = upstreamCredentialBodySchema.safeParse(request.body);
+  if (!parsedId.success || !parsedBody.success) {
+    response.status(400).json({ error: 'A valid upstream ID and credential are required.' });
+    return;
+  }
+
+  try {
+    await withCredentialQueue(async () => {
+      const values = await readUpstreamCredentials();
+      values[credentialKeyForUpstream(parsedId.data)] = parsedBody.data.credential;
+      await writeUpstreamCredentials(values);
+    });
+    response.status(204).end();
+  } catch {
+    response.status(503).json({ error: 'Could not store upstream credential.' });
+  }
+});
+
+app.delete('/upstream-credentials/:id', async (request, response) => {
+  const parsedId = upstreamIdSchema.safeParse(request.params.id);
+  if (!parsedId.success) {
+    response.status(400).json({ error: 'Invalid upstream ID.' });
+    return;
+  }
+
+  try {
+    await withCredentialQueue(async () => {
+      const values = await readUpstreamCredentials();
+      delete values[credentialKeyForUpstream(parsedId.data)];
+      await writeUpstreamCredentials(values);
+    });
+    response.status(204).end();
+  } catch {
+    response.status(503).json({ error: 'Could not remove upstream credential.' });
+  }
+});
 
 app.use('/stores', requireInternalToken);
 

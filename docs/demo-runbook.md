@@ -84,3 +84,12 @@ Use a unique test slug such as `store-two-demo` if `store-two` is already presen
 ## Evidence log
 
 Record date, cluster/context, image tags, and a short result for each section above. Prefer sanitized command output and screenshots; redact keys, passwords, order/customer PII, and internal tokens.
+
+## Optional upstream credential verification
+
+- [ ] Register a disposable test upstream with a bearer token or custom `X-API-Key` header.
+- [ ] Verify the authenticated upstream accepts discovery/calls and returns expected tools.
+- [ ] Inspect `/api/admin/servers` and the persisted `servers.json`: they must show only authentication metadata, never the credential value.
+- [ ] Inspect the dedicated Kubernetes Secret by metadata/data-key only (do not print or screenshot its value) and verify it exists only in the platform namespace.
+- [ ] Update the credential through the edit form and confirm the new value is used; remove authentication and confirm the credential key is deleted.
+- [ ] Delete the disposable upstream and verify its credential key is removed without affecting other upstreams.

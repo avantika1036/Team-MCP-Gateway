@@ -117,8 +117,8 @@ The store MCP image default is `urumi/woocommerce-mcp:0.1.7`. The platform value
 minikube start -p urumi-local
 minikube addons enable ingress -p urumi-local
 # Build images with the Dockerfiles in this repository, then load each image:
-minikube image load urumi/control-plane:0.1.6 -p urumi-local
-minikube image load urumi/provisioner:0.1.0 -p urumi-local
+minikube image load urumi/control-plane:0.1.11 -p urumi-local
+minikube image load urumi/provisioner:0.1.1 -p urumi-local
 minikube image load urumi/calculator-mcp:0.1.0 -p urumi-local
 minikube image load urumi/utility-mcp:0.1.0 -p urumi-local
 minikube image load urumi/woocommerce-mcp:0.1.7 -p urumi-local
@@ -147,6 +147,10 @@ Add local storefront hosts to the Windows hosts file at `C:\Windows\System32\dri
 
 The commands above are orientation only; see [`docs/multi-store-provisioning.md`](docs/multi-store-provisioning.md) and the demo runbook for the required secrets, chart values, and complete flow. Do not use the demo tokens or local HTTP URLs for a public production deployment.
 
+## Upstream authentication
+
+Administrators can register a generic MCP upstream without authentication, with a bearer token, or with a custom header credential. Credential values are stored in a dedicated Kubernetes Secret by the internal provisioner; only non-secret authentication metadata is retained in the JSON registry and returned to the dashboard. See [`docs/upstream-credentials.md`](docs/upstream-credentials.md) for the credential flow, API shapes, and least-privilege controls.
+
 ## Store provisioning and deletion
 
 Store creation/deletion is performed by the gateway admin API, which proxies requests to an internal ClusterIP-only provisioner. The provisioner uses a dedicated Kubernetes ServiceAccount and scoped RBAC to create namespaces, install the reusable store chart, wait for readiness, create WooCommerce API credentials, and tear down a store. A per-owner limit defaults to three active stores. Review [`docs/multi-store-provisioning.md`](docs/multi-store-provisioning.md) before using it outside a disposable development cluster.
@@ -165,4 +169,5 @@ Store creation/deletion is performed by the gateway admin API, which proxies req
 - [Chat agent configuration](docs/chat-agent.md)
 - [Multi-store provisioning](docs/multi-store-provisioning.md)
 - [Security model and design trade-offs](docs/security-and-design.md)
+- [Optional upstream credentials](docs/upstream-credentials.md)
 - [Demo and acceptance runbook](docs/demo-runbook.md)

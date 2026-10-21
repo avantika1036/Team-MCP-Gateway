@@ -87,18 +87,18 @@ data:
 
 ## 3. Build and load all images
 
-The image tags below match the repository's current default chart values:
+The image tags below match the repository's current default chart values, including generic upstream credential support:
 
 ```powershell
-docker build -f services/control-plane/Dockerfile -t urumi/control-plane:0.1.6 .
-docker build -f services/provisioner/Dockerfile -t urumi/provisioner:0.1.0 .
+docker build -f services/control-plane/Dockerfile -t urumi/control-plane:0.1.11 .
+docker build -f services/provisioner/Dockerfile -t urumi/provisioner:0.1.1 .
 docker build -f services/calculator-mcp/Dockerfile -t urumi/calculator-mcp:0.1.0 .
 docker build -f services/utility-mcp/Dockerfile -t urumi/utility-mcp:0.1.0 .
 docker build -f services/woocommerce-mcp/Dockerfile -t urumi/woocommerce-mcp:0.1.7 .
 docker build -f images/wordpress-woocommerce/Dockerfile -t urumi/wordpress-woocommerce:0.1.1 .
 
-minikube image load urumi/control-plane:0.1.6 -p urumi-local
-minikube image load urumi/provisioner:0.1.0 -p urumi-local
+minikube image load urumi/control-plane:0.1.11 -p urumi-local
+minikube image load urumi/provisioner:0.1.1 -p urumi-local
 minikube image load urumi/calculator-mcp:0.1.0 -p urumi-local
 minikube image load urumi/utility-mcp:0.1.0 -p urumi-local
 minikube image load urumi/woocommerce-mcp:0.1.7 -p urumi-local

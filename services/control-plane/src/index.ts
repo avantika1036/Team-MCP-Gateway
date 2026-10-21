@@ -10,7 +10,8 @@ import { toNodeHandler } from '@modelcontextprotocol/node';
 import * as z from 'zod';
 
 import { config, validateUpstreamUrl } from './config.js';
-import { ServerRegistry, type UpstreamServer } from './registry.js';
+import { ServerRegistry, type UpstreamPatch, type UpstreamServer } from './registry.js';
+import { authReferenceFromInput, upstreamAuthInputSchema } from './upstream-auth.js';
 import { callUpstreamTool, discoverTools, type RemoteTool } from './upstreams.js';
 import { runChatWithGateway, type ConversationMessage } from './chat.js';
 
@@ -47,6 +48,7 @@ const createServerSchema = z.object({
   name: z.string().trim().min(1).max(100),
   url: z.string().url(),
   enabled: z.boolean().optional().default(true),
+  auth: upstreamAuthInputSchema.optional(),
 });
 
 const updateServerSchema = z
@@ -54,6 +56,7 @@ const updateServerSchema = z
     name: z.string().trim().min(1).max(100).optional(),
     url: z.string().url().optional(),
     enabled: z.boolean().optional(),
+    auth: z.union([upstreamAuthInputSchema, z.null()]).optional(),
   })
   .refine((value) => Object.keys(value).length > 0, {
     message: 'At least one field must be supplied.',
@@ -218,8 +221,16 @@ async function refreshToolSnapshot(): Promise<void> {
 }
 
 function serverWithStatus(server: UpstreamServer) {
+  const { auth, ...publicServer } = server;
   return {
-    ...server,
+    ...publicServer,
+    authConfigured: Boolean(auth),
+    ...(auth
+      ? {
+          authType: auth.type,
+          ...(auth.type === 'header' ? { authHeaderName: auth.headerName } : {}),
+        }
+      : {}),
     status: runtimeStatus.get(server.id) ?? {
       reachable: false,
       toolCount: 0,
@@ -542,7 +553,6 @@ app.post('/api/admin/servers', requireAdmin, async (request, response) => {
   }
 
   let url: string;
-
   try {
     url = validateUpstreamUrl(parsed.data.url);
   } catch (error) {
@@ -550,21 +560,50 @@ app.post('/api/admin/servers', requireAdmin, async (request, response) => {
     return;
   }
 
+  if ((await registry.list()).some((server) => server.id === parsed.data.id)) {
+    response.status(409).json({ error: `Upstream '${parsed.data.id}' already exists.` });
+    return;
+  }
+
+  const authReference = parsed.data.auth ? authReferenceFromInput(parsed.data.auth) : undefined;
+  let created: UpstreamServer;
   try {
-    const created = await registry.add({
-      ...parsed.data,
+    created = await registry.add({
+      id: parsed.data.id,
+      name: parsed.data.name,
       url,
       enabled: parsed.data.enabled ?? true,
-    });
-
-    await refreshToolSnapshot();
-
-    response.status(201).json({
-      server: serverWithStatus(created),
+      ...(authReference ? { auth: authReference } : {}),
     });
   } catch (error) {
     response.status(409).json({ error: messageOf(error) });
+    return;
   }
+
+  if (parsed.data.auth) {
+    try {
+      await callProvisioner(`/upstream-credentials/${encodeURIComponent(created.id)}`, 'PUT', {
+        credential: parsed.data.auth.credential,
+      });
+    } catch (error) {
+      // A timeout may occur after the Secret was written but before the gateway
+      // received the response. Best-effort cleanup prevents an orphaned credential.
+      try {
+        await callProvisioner(`/upstream-credentials/${encodeURIComponent(created.id)}`, 'DELETE');
+      } catch {
+        // The registry entry is still removed; a later secret inventory can reconcile an orphan.
+      }
+      await registry.remove(created.id);
+      const status = error instanceof ProvisionerHttpError ? error.statusCode : 502;
+      response
+        .status(status)
+        .json({ error: `Could not store upstream credential: ${messageOf(error)}` });
+      return;
+    }
+  }
+
+  await refreshToolSnapshot();
+  response.status(201).json({ server: serverWithStatus(created) });
 });
 
 app.put('/api/admin/servers/:id', requireAdmin, async (request, response) => {
@@ -578,7 +617,16 @@ app.put('/api/admin/servers/:id', requireAdmin, async (request, response) => {
     return;
   }
 
-  const patch = { ...parsed.data };
+  const id = String(request.params.id);
+  const current = (await registry.list()).find((server) => server.id === id);
+  if (!current) {
+    response.status(404).json({ error: 'Upstream not found.' });
+    return;
+  }
+
+  const { auth: authInput, ...fields } = parsed.data;
+  const patch: UpstreamPatch = { ...fields };
+  const hasAuthUpdate = Object.prototype.hasOwnProperty.call(request.body ?? {}, 'auth');
 
   if (patch.url !== undefined) {
     try {
@@ -589,15 +637,33 @@ app.put('/api/admin/servers/:id', requireAdmin, async (request, response) => {
     }
   }
 
-  const updated = await registry.update(String(request.params.id), patch);
+  if (hasAuthUpdate) {
+    try {
+      if (authInput === null) {
+        await callProvisioner(`/upstream-credentials/${encodeURIComponent(id)}`, 'DELETE');
+        patch.auth = null;
+      } else if (authInput) {
+        await callProvisioner(`/upstream-credentials/${encodeURIComponent(id)}`, 'PUT', {
+          credential: authInput.credential,
+        });
+        patch.auth = authReferenceFromInput(authInput);
+      }
+    } catch (error) {
+      const status = error instanceof ProvisionerHttpError ? error.statusCode : 502;
+      response
+        .status(status)
+        .json({ error: `Could not update upstream credential: ${messageOf(error)}` });
+      return;
+    }
+  }
 
+  const updated = await registry.update(id, patch);
   if (!updated) {
     response.status(404).json({ error: 'Upstream not found.' });
     return;
   }
 
   await refreshToolSnapshot();
-
   response.json({ server: serverWithStatus(updated) });
 });
 
@@ -625,8 +691,25 @@ app.patch('/api/admin/servers/:id/enabled', requireAdmin, async (request, respon
 
 app.delete('/api/admin/servers/:id', requireAdmin, async (request, response) => {
   const id = String(request.params.id);
-  const removed = await registry.remove(id);
+  const current = (await registry.list()).find((server) => server.id === id);
+  if (!current) {
+    response.status(404).json({ error: 'Upstream not found.' });
+    return;
+  }
 
+  if (current.auth) {
+    try {
+      await callProvisioner(`/upstream-credentials/${encodeURIComponent(id)}`, 'DELETE');
+    } catch (error) {
+      const status = error instanceof ProvisionerHttpError ? error.statusCode : 502;
+      response
+        .status(status)
+        .json({ error: `Could not remove upstream credential: ${messageOf(error)}` });
+      return;
+    }
+  }
+
+  const removed = await registry.remove(id);
   if (!removed) {
     response.status(404).json({ error: 'Upstream not found.' });
     return;
@@ -634,7 +717,6 @@ app.delete('/api/admin/servers/:id', requireAdmin, async (request, response) => 
 
   runtimeStatus.delete(id);
   await refreshToolSnapshot();
-
   response.status(204).end();
 });
 

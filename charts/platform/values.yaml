@@ -62,7 +62,7 @@ chat:
 provisioner:
   image:
     repository: urumi/provisioner
-    tag: '0.1.0'
+    tag: '0.1.1'
     pullPolicy: IfNotPresent
   port: 4100
   baseDomain: 'urumi.test'
@@ -81,7 +81,7 @@ provisioner:
 gateway:
   image:
     repository: urumi/control-plane
-    tag: '0.1.8'
+    tag: '0.1.11'
     pullPolicy: IfNotPresent
   port: 4000
   adminToken:

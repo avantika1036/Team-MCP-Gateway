@@ -68,3 +68,23 @@ test('registry serializes concurrent writes without dropping entries', async () 
     assert.deepEqual(current.map((entry) => entry.id).sort(), ids.sort());
   });
 });
+
+test('registry persists only upstream authentication metadata, never credential material', async () => {
+  await withRegistry(async ({ registry, filePath }) => {
+    const created = await registry.add({
+      ...server('inventory'),
+      auth: { type: 'header', headerName: 'X-API-Key' },
+    });
+
+    assert.deepEqual(created.auth, { type: 'header', headerName: 'X-API-Key' });
+    const persisted = await readFile(filePath, 'utf8');
+    assert.match(persisted, /X-API-Key/);
+    assert.doesNotMatch(persisted, /secret-value-456|token-value-123/);
+
+    const reopened = await ServerRegistry.open(filePath);
+    assert.deepEqual((await reopened.list())[0].auth, {
+      type: 'header',
+      headerName: 'X-API-Key',
+    });
+  });
+});

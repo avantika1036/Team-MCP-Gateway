@@ -2,6 +2,8 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { z } from 'zod';
 
+import { upstreamAuthReferenceSchema } from './upstream-auth.js';
+
 const serverSchema = z.object({
   id: z.string().regex(/^[a-z][a-z0-9-]{1,31}$/),
   name: z.string().min(1).max(100),
@@ -9,14 +11,16 @@ const serverSchema = z.object({
   enabled: z.boolean(),
   createdAt: z.string(),
   updatedAt: z.string(),
+  auth: upstreamAuthReferenceSchema.nullable().optional(),
 });
 
 const registrySchema = z.array(serverSchema);
 
 export type UpstreamServer = z.infer<typeof serverSchema>;
 
-type NewUpstream = Pick<UpstreamServer, 'id' | 'name' | 'url' | 'enabled'>;
-type UpstreamPatch = Partial<Pick<UpstreamServer, 'name' | 'url' | 'enabled'>>;
+type NewUpstream = Pick<UpstreamServer, 'id' | 'name' | 'url' | 'enabled'> &
+  Pick<UpstreamServer, 'auth'>;
+export type UpstreamPatch = Partial<Pick<UpstreamServer, 'name' | 'url' | 'enabled' | 'auth'>>;
 
 export class ServerRegistry {
   private servers: UpstreamServer[] = [];

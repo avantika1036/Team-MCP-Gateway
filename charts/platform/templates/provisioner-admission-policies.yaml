@@ -72,3 +72,41 @@ metadata:
 spec:
   policyName: {{ include "platform.fullname" . }}-provisioner-rolebinding-guard
   validationActions: [Deny]
+
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: {{ include "platform.fullname" . }}-upstream-credential-secret-guard
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE", "DELETE"]
+        resources: ["secrets"]
+  matchConditions:
+    - name: request-from-provisioner
+      expression: {{ printf "request.userInfo.username == %q" $provisionerUsername | quote }}
+    - name: request-in-platform-namespace
+      expression: {{ printf "request.namespace == %q" .Release.Namespace | quote }}
+  validations:
+    - expression: >-
+        request.operation == 'DELETE'
+        ? oldObject.metadata.name == {{ include "platform.upstreamCredentialsSecretName" . | quote }}
+        : object.metadata.name == {{ include "platform.upstreamCredentialsSecretName" . | quote }}
+          && object.type == 'Opaque'
+      message: "The provisioner may only create, update, or delete the dedicated upstream credential Secret in the platform namespace."
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: {{ include "platform.fullname" . }}-upstream-credential-secret-guard
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+spec:
+  policyName: {{ include "platform.fullname" . }}-upstream-credential-secret-guard
+  validationActions: [Deny]

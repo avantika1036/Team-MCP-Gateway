@@ -67,6 +67,39 @@ subjects:
     name: {{ include "platform.fullname" . }}-provisioner
     namespace: {{ .Release.Namespace }}
 ---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "platform.fullname" . }}-upstream-credential-writer
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames:
+      - {{ include "platform.upstreamCredentialsSecretName" . }}
+    verbs: ["get", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "platform.fullname" . }}-upstream-credential-writer
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "platform.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "platform.fullname" . }}-upstream-credential-writer
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "platform.fullname" . }}-provisioner
+    namespace: {{ .Release.Namespace }}
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -126,6 +159,8 @@ spec:
               value: {{ .Values.provisioner.namespacePrefix | quote }}
             - name: GATEWAY_NAMESPACE
               value: {{ .Release.Namespace | quote }}
+            - name: UPSTREAM_CREDENTIALS_SECRET
+              value: {{ include "platform.upstreamCredentialsSecretName" . | quote }}
             - name: PROVISIONER_SERVICE_ACCOUNT
               value: {{ include "platform.fullname" . }}-provisioner
             - name: STORE_OPERATOR_CLUSTERROLE
