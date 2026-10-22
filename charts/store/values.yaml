@@ -73,3 +73,9 @@ mcp:
     limits:
       cpu: 500m
       memory: 256Mi
+
+networkPolicy:
+  # Managed by the store chart for both static and provisioned store releases.
+  enabled: true
+  gatewayNamespace: urumi-platform
+  ingressNamespace: ingress-nginx

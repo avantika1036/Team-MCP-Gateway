@@ -300,63 +300,7 @@ spec:
       defaultRequest:
         cpu: 50m
         memory: 96Mi
----
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: store-default-isolation
-  namespace: ${namespace}
-spec:
-  podSelector: {}
-  policyTypes:
-    - Ingress
-    - Egress
-  ingress:
-    - from:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: ${namespace}
-    - from:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: ingress-nginx
-      ports:
-        - protocol: TCP
-          port: 80
-  egress:
-    - to:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: ${namespace}
-    - to:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: kube-system
-      ports:
-        - protocol: UDP
-          port: 53
-        - protocol: TCP
-          port: 53
----
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: allow-gateway-to-store-mcp
-  namespace: ${namespace}
-spec:
-  podSelector:
-    matchLabels:
-      app.kubernetes.io/component: woocommerce-mcp
-  policyTypes:
-    - Ingress
-  ingress:
-    - from:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: ${gatewayNamespace}
-      ports:
-        - protocol: TCP
-          port: 3002
+
 `;
 }
 
@@ -403,6 +347,10 @@ async function installStore(store: StoreRecord): Promise<void> {
     'ingress.enabled=true',
     '--set-string',
     `ingress.host=${store.host}`,
+    '--set',
+    'networkPolicy.enabled=true',
+    '--set-string',
+    `networkPolicy.gatewayNamespace=${gatewayNamespace}`,
     '--set-string',
     `wordpress.siteUrl=${store.siteUrl}`,
     '--set-string',

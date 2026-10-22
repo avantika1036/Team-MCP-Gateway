@@ -5,7 +5,7 @@ The platform's provisioner is an internal-only service. The control plane authen
 ## Create flow
 
 1. Validate the store slug and enforce the configured active-store quota per owner.
-2. Create a dedicated namespace and apply a `ResourceQuota`, `LimitRange`, and `NetworkPolicy` isolation baseline.
+2. Create a dedicated namespace and apply a `ResourceQuota` and `LimitRange`; the store Helm chart owns the `NetworkPolicy` resources.
 3. Generate unique MariaDB root/application and WordPress administrator passwords into a Kubernetes Secret.
 4. Install `charts/store` with MCP temporarily disabled and wait for WordPress/MariaDB readiness.
 5. Generate a real WooCommerce read/write API key inside that store's WordPress deployment and store the credentials in a namespace-local Kubernetes Secret.
@@ -24,7 +24,7 @@ The `provisioner` section in `charts/platform/values.yaml` controls the image, b
 
 - Store names are restricted to safe DNS-style slugs. Existing namespaces are not adopted automatically.
 - Each store has its own database credentials, WordPress administrator password, WooCommerce API key Secret, namespace, and persistent volumes.
-- Default network policy denies cross-namespace traffic except ingress-controller HTTP to the storefront and gateway traffic to the store MCP.
+- The store chart's namespace policy permits ingress-controller HTTP to storefront pods. The WooCommerce MCP pod is excluded from the general same-namespace allow rule and accepts inbound traffic only from Gateway pods in the configured Gateway namespace. Its egress is limited to the store namespace and cluster DNS. Kubernetes NetworkPolicies are additive, so keep the MCP pod excluded from broader allow policies. The chart owns these resources so a Helm upgrade can apply the same policy to an existing store.
 - Quotas cap pods, CPU, memory, PVC count and requested storage. The per-user limit defaults to three active stores.
 - The provisioner uses a dedicated Kubernetes ServiceAccount and a scoped ClusterRole because it must create/delete namespaces and install namespaced Helm resources. Review the rule set before production use.
 - Provisioning is synchronous and may take several minutes. Failed create operations attempt Helm and namespace cleanup and leave a failure record for dashboard inspection.
