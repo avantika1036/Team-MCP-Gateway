@@ -36,6 +36,7 @@ The updated provisioner now passes the Gateway namespace into the Helm chart, an
    ```
 
    The last command should report `urumi/provisioner:0.1.2`. Do not continue to disposable-store testing until the rollout succeeds.
+
 5. Create a disposable store (for example, `policy-check`) from the dashboard. Wait until its store MCP is ready.
 6. Confirm the policies have the expected selectors:
 
