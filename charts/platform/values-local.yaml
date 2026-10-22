@@ -1,0 +1,7 @@
+# Local Minikube profile. Port-forward the ingress controller to localhost:8080.
+ingress:
+  enabled: true
+  host: mcp.urumi.test
+  tls:
+    enabled: false
+    secretName: ''
