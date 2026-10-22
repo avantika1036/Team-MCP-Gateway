@@ -23,7 +23,19 @@ The updated provisioner now passes the Gateway namespace into the Helm chart, an
    A vanilla Minikube profile uses Kindnet, which does not enforce Kubernetes NetworkPolicies. The policy objects can still be reviewed there, but the negative connection test is meaningful only with a NetworkPolicy-capable CNI such as Calico. Do not replace the networking plugin in your existing demo cluster as part of this code change; use a separate test profile if needed.
 
 3. Run `helm lint charts/store` and render its policies with `helm template store-policy-check charts/store --namespace urumi-store-policy-check --set-string networkPolicy.gatewayNamespace=urumi-platform`.
-4. Build a new provisioner image tag and load it into the `urumi-local` Minikube profile. Update `provisioner.image.tag` in `charts/platform/values.yaml` to match the new tag, then run `helm upgrade urumi-platform charts/platform --namespace urumi-platform --reuse-values`.
+4. Build and load the updated provisioner image. The repository default is now `urumi/provisioner:0.1.2`; the Dockerfile copies `charts/store` into the image, so rebuild it when changing the store chart. From the repository root in PowerShell run:
+
+   ```powershell
+   docker build -f services/provisioner/Dockerfile -t urumi/provisioner:0.1.2 .
+   minikube image load urumi/provisioner:0.1.2 -p urumi-local
+   helm upgrade urumi-platform .\charts\platform `
+     --namespace urumi-platform --reuse-values `
+     --set-string provisioner.image.tag=0.1.2 --wait --timeout 10m
+   kubectl rollout status deployment/urumi-platform-provisioner -n urumi-platform --timeout=180s
+   kubectl get deployment urumi-platform-provisioner -n urumi-platform -o jsonpath='{.spec.template.spec.containers[0].image}'
+   ```
+
+   The last command should report `urumi/provisioner:0.1.2`. Do not continue to disposable-store testing until the rollout succeeds.
 5. Create a disposable store (for example, `policy-check`) from the dashboard. Wait until its store MCP is ready.
 6. Confirm the policies have the expected selectors:
 

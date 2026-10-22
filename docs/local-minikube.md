@@ -91,18 +91,29 @@ The image tags below match the repository's current default chart values, includ
 
 ```powershell
 docker build -f services/control-plane/Dockerfile -t urumi/control-plane:0.1.11 .
-docker build -f services/provisioner/Dockerfile -t urumi/provisioner:0.1.1 .
+docker build -f services/provisioner/Dockerfile -t urumi/provisioner:0.1.2 .
 docker build -f services/calculator-mcp/Dockerfile -t urumi/calculator-mcp:0.1.0 .
 docker build -f services/utility-mcp/Dockerfile -t urumi/utility-mcp:0.1.0 .
 docker build -f services/woocommerce-mcp/Dockerfile -t urumi/woocommerce-mcp:0.1.7 .
 docker build -f images/wordpress-woocommerce/Dockerfile -t urumi/wordpress-woocommerce:0.1.1 .
 
 minikube image load urumi/control-plane:0.1.11 -p urumi-local
-minikube image load urumi/provisioner:0.1.1 -p urumi-local
+minikube image load urumi/provisioner:0.1.2 -p urumi-local
 minikube image load urumi/calculator-mcp:0.1.0 -p urumi-local
 minikube image load urumi/utility-mcp:0.1.0 -p urumi-local
 minikube image load urumi/woocommerce-mcp:0.1.7 -p urumi-local
 minikube image load urumi/wordpress-woocommerce:0.1.1 -p urumi-local
+```
+
+For an **existing** local installation that only needs the updated provisioner image, build and load the image, then upgrade the platform without reinstalling stores:
+
+```powershell
+docker build -f services/provisioner/Dockerfile -t urumi/provisioner:0.1.2 .
+minikube image load urumi/provisioner:0.1.2 -p urumi-local
+helm upgrade urumi-platform .\charts\platform `
+  --namespace urumi-platform --reuse-values `
+  --set-string provisioner.image.tag=0.1.2 --wait --timeout 10m
+kubectl rollout status deployment/urumi-platform-provisioner -n urumi-platform --timeout=180s
 ```
 
 If you change a tag in `charts/platform/values.yaml` or `charts/store/values.yaml`, build and load the matching tag before installing/upgrading.

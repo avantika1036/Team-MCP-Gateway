@@ -62,7 +62,7 @@ chat:
 provisioner:
   image:
     repository: urumi/provisioner
-    tag: '0.1.1'
+    tag: '0.1.2'
     pullPolicy: IfNotPresent
   port: 4100
   baseDomain: 'urumi.test'

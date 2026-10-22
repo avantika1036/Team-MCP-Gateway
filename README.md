@@ -116,12 +116,23 @@ The store MCP image default is `urumi/woocommerce-mcp:0.1.7`. The platform value
 ```powershell
 minikube start -p urumi-local
 minikube addons enable ingress -p urumi-local
-# Build images with the Dockerfiles in this repository, then load each image:
+# Rebuild the provisioner with the updated store chart bundled into the image.
+docker build -f services/provisioner/Dockerfile -t urumi/provisioner:0.1.2 .
+# Load images into the Minikube node:
 minikube image load urumi/control-plane:0.1.11 -p urumi-local
-minikube image load urumi/provisioner:0.1.1 -p urumi-local
+minikube image load urumi/provisioner:0.1.2 -p urumi-local
 minikube image load urumi/calculator-mcp:0.1.0 -p urumi-local
 minikube image load urumi/utility-mcp:0.1.0 -p urumi-local
 minikube image load urumi/woocommerce-mcp:0.1.7 -p urumi-local
+```
+
+For an existing local platform, upgrade the platform release to activate the new provisioner image. Helm will reconcile the platform chart resources as part of this upgrade:
+
+```powershell
+helm upgrade urumi-platform .\charts\platform `
+  --namespace urumi-platform --reuse-values `
+  --set-string provisioner.image.tag=0.1.2 --wait --timeout 10m
+kubectl rollout status deployment/urumi-platform-provisioner -n urumi-platform --timeout=180s
 ```
 
 Build the WordPress image from `images/wordpress-woocommerce/Dockerfile` and load the exact tag configured under `charts/store/values.yaml` as well. The commands above assume those images have already been built locally.
