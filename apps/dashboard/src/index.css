@@ -435,7 +435,7 @@ main {
   background: #24423e;
   border-radius: 8px;
   padding: 5px 7px;
-  font-size: 12px;
+  font-size: 15px;
 }
 
 .stat-value {
@@ -448,6 +448,7 @@ main {
 .stat-foot {
   color: #9aaac0;
   font-size: 13px;
+  font-weight: 500;
   margin-top: 3px;
   line-height: 1.5;
 }
