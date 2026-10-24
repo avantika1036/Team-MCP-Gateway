@@ -75,7 +75,7 @@ export default function Overview({ onNavigate }) {
         <article className="stat-card">
           <div className="stat-top">
             <span>Reachable services</span>
-            <span className="stat-icon">⌁</span>
+            <span className="stat-icon stat-icon-lg">⌁</span>
           </div>
           <div className="stat-value">{isLoading ? '—' : `${reachable}/${servers.length}`}</div>
           <div className="stat-foot">Last gateway discovery check</div>
