@@ -1,13 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext.jsx';
+import Toast from './Toast.jsx';
 
 export default function Overview({ onNavigate }) {
   const { api } = useAuth();
   const [servers, setServers] = useState([]);
   const [events, setEvents] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [toast, setToast] = useState(null);
 
-  const loadData = async () => {
+  const loadData = async (showNotification = false) => {
     try {
       const [serverData, eventData] = await Promise.all([
         api('/api/admin/servers'),
@@ -15,8 +17,14 @@ export default function Overview({ onNavigate }) {
       ]);
       setServers(serverData.servers || []);
       setEvents(eventData.events || []);
+      if (showNotification) {
+        setToast('Data refreshed successfully');
+      }
     } catch (error) {
       console.error('Failed to load overview data:', error);
+      if (showNotification) {
+        setToast('Failed to refresh data');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -51,6 +59,7 @@ export default function Overview({ onNavigate }) {
 
   return (
     <section className="page active">
+      {toast && <Toast message={toast} onClose={() => setToast(null)} />}
       <div className="page-heading">
         <div>
           <div className="eyebrow">System overview</div>
@@ -58,6 +67,9 @@ export default function Overview({ onNavigate }) {
           <p>Your MCP services, access controls, and activity in one place.</p>
         </div>
         <div className="heading-actions">
+          <button className="btn" onClick={() => loadData(true)}>
+            Refresh data
+          </button>
           <button className="btn primary" onClick={() => navigate('upstreams')}>
             Manage upstreams ↗
           </button>
