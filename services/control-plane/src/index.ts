@@ -1,5 +1,6 @@
 import { timingSafeEqual } from 'node:crypto';
 import { AsyncLocalStorage } from 'node:async_hooks';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express, { type RequestHandler } from 'express';
 
@@ -356,10 +357,17 @@ const app = createMcpExpressApp({
 
 app.use(express.json({ limit: '64kb' }));
 
-const dashboardDirectory = fileURLToPath(new URL('../../../apps/dashboard/', import.meta.url));
-const chatPagePath = fileURLToPath(new URL('../../../apps/dashboard/chat.html', import.meta.url));
+const dashboardDirectory = fileURLToPath(new URL('../../../apps/dashboard/dist', import.meta.url));
+app.use('/assets', express.static(path.join(dashboardDirectory, 'assets')));
 app.use('/dashboard', express.static(dashboardDirectory, { index: 'index.html' }));
-app.get(/^\/chat\/?$/, (_request, response) => response.sendFile(chatPagePath));
+app.use('/chat', express.static(dashboardDirectory, { index: 'index.html' }));
+
+app.get(/^\/dashboard(?:\/.*)?$/, (_request, response) => {
+  response.sendFile(path.join(dashboardDirectory, 'index.html'));
+});
+app.get(/^\/chat(?:\/.*)?$/, (_request, response) => {
+  response.sendFile(path.join(dashboardDirectory, 'index.html'));
+});
 
 app.get('/', (_request, response) => response.redirect('/dashboard/'));
 
