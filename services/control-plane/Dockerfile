@@ -8,6 +8,7 @@ COPY services ./services
 COPY packages ./packages
 
 RUN npm ci --include=dev
+RUN npm run build --workspace @urumi/dashboard
 RUN npm run build --workspace @urumi/control-plane
 RUN npm prune --omit=dev \
     && npm cache clean --force \
