@@ -81,7 +81,7 @@ provisioner:
 gateway:
   image:
     repository: urumi/control-plane
-    tag: '0.1.11'
+    tag: '0.1.13'
     pullPolicy: IfNotPresent
   port: 4000
   adminToken:
