@@ -732,6 +732,11 @@ dialog {
   border: 1px solid #39475b;
   border-radius: 18px;
   box-shadow: 0 35px 120px #000b;
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1000;
 }
 
 dialog::backdrop {
