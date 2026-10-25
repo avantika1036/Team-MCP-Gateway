@@ -602,6 +602,7 @@ Store creation/deletion is performed by the gateway admin API, which proxies req
 - [Fresh local Minikube setup](docs/local-minikube.md)
 - [Chat agent configuration](docs/chat-agent.md)
 - [Multi-store provisioning](docs/multi-store-provisioning.md)
+- [Upgrades and rollback](docs/upgrades-and-rollback.md)
 - [Security model and design trade-offs](docs/security-and-design.md)
 - [Optional upstream credentials](docs/upstream-credentials.md)
 - [Demo and acceptance runbook](docs/demo-runbook.md)
@@ -613,6 +614,12 @@ Store creation/deletion is performed by the gateway admin API, which proxies req
 The following bonus features have been implemented:
 
 - **Multi-store provisioning**: Full implementation with namespace isolation, automatic MCP registration, and clean teardown. See [Multi-store provisioning](docs/multi-store-provisioning.md) for details.
+
+## Stand-out Features Attempted
+
+The following stand-out features have been implemented:
+
+- **Upgrades and rollback**: Full documentation and demonstration of safe Helm upgrade and rollback procedures with atomic upgrades, dry-run validation, and monitoring. See [Upgrades and rollback](docs/upgrades-and-rollback.md) for details.
 
 ## Troubleshooting
 
