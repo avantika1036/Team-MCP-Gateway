@@ -11,6 +11,7 @@ export default function Layout() {
   const [currentPage, setCurrentPage] = useState('overview');
   const [gatewayStatus, setGatewayStatus] = useState('Checking connection…');
   const [servers, setServers] = useState([]);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const checkHealth = async () => {
     try {
@@ -37,11 +38,13 @@ export default function Layout() {
       return;
     }
     setCurrentPage(page);
+    setRefreshKey(0); // Reset refresh trigger on page navigation
   };
 
   const handleRefreshAll = async () => {
-    // Re-check health; individual page components manage their own data.
+    // Re-check health and trigger page refresh
     await checkHealth();
+    setRefreshKey(prev => prev + 1);
   };
 
   const pages = {
@@ -97,7 +100,7 @@ export default function Layout() {
             Workspace <span className="muted">/</span> <span>{breadcrumb}</span>
           </div>
           <div className="top-actions">
-            <button className="btn ghost small" onClick={handleRefreshAll}>↻ Refresh data</button>
+            <button className="btn ghost" style={{ fontSize: '13px', padding: '7px 10px' }} onClick={handleRefreshAll}>↻ Refresh data</button>
             <div className="admin-chip">
               <span className="avatar">{user?.displayName?.[0]?.toUpperCase() || 'A'}</span>
               <span>{user ? `${user.displayName} · ${user.role}` : 'Administrator session'}</span>
@@ -105,11 +108,11 @@ export default function Layout() {
           </div>
         </div>
 
-        {currentPage === 'overview' && <Overview onNavigate={handleNavigate} />}
-        {currentPage === 'upstreams' && <Upstreams />}
-        {currentPage === 'stores' && <Stores />}
-        {currentPage === 'users' && <Users />}
-        {currentPage === 'audit' && <Audit />}
+        {currentPage === 'overview' && <Overview onNavigate={handleNavigate} refreshKey={refreshKey} />}
+        {currentPage === 'upstreams' && <Upstreams refreshKey={refreshKey} />}
+        {currentPage === 'stores' && <Stores refreshKey={refreshKey} />}
+        {currentPage === 'users' && <Users refreshKey={refreshKey} />}
+        {currentPage === 'audit' && <Audit refreshKey={refreshKey} />}
 
         <div
           style={{

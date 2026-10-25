@@ -3,7 +3,7 @@ import { useAuth } from '../contexts/AuthContext.jsx';
 import Dialog from './Dialog.jsx';
 import Toast from './Toast.jsx';
 
-export default function Users() {
+export default function Users({ refreshKey }) {
   const { api } = useAuth();
   const [users, setUsers] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -24,12 +24,18 @@ export default function Users() {
     keyName: 'initial',
   });
 
-  const loadData = async () => {
+  const loadData = async (showNotification = false) => {
     try {
       const data = await api('/api/admin/users');
       setUsers(data.users || []);
+      if (showNotification) {
+        setToast({ message: 'Users refreshed', bad: false });
+      }
     } catch (error) {
       console.error('Failed to load users:', error);
+      if (showNotification) {
+        setToast({ message: 'Failed to refresh users', bad: true });
+      }
     } finally {
       setIsLoading(false);
     }
@@ -50,6 +56,12 @@ export default function Users() {
   useEffect(() => {
     loadData();
   }, [api]);
+
+  useEffect(() => {
+    if (refreshKey > 0) {
+      loadData(true);
+    }
+  }, [refreshKey]);
 
   const filteredUsers = users.filter((u) =>
     `${u.email} ${u.displayName} ${u.role}`.toLowerCase().includes(searchQuery.toLowerCase()),
@@ -131,6 +143,7 @@ export default function Users() {
 
   return (
     <section className="page active">
+      {toast && <Toast message={toast.message || toast} bad={toast.bad} onClose={() => setToast(null)} />}
       <div className="page-heading">
         <div>
           <div className="eyebrow">Identity & access</div>

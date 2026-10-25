@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import Toast from './Toast.jsx';
 
-export default function Stores() {
+export default function Stores({ refreshKey }) {
   const { api } = useAuth();
   const [stores, setStores] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -13,12 +13,18 @@ export default function Stores() {
     displayName: '',
   });
 
-  const loadData = async () => {
+  const loadData = async (showNotification = false) => {
     try {
       const data = await api('/api/admin/stores');
       setStores(data.stores || []);
+      if (showNotification) {
+        setToast({ message: 'Stores refreshed', bad: false });
+      }
     } catch (error) {
       console.error('Failed to load stores:', error);
+      if (showNotification) {
+        setToast({ message: 'Failed to refresh stores', bad: true });
+      }
     } finally {
       setIsLoading(false);
     }
@@ -27,6 +33,12 @@ export default function Stores() {
   useEffect(() => {
     loadData();
   }, [api]);
+
+  useEffect(() => {
+    if (refreshKey > 0) {
+      loadData(true);
+    }
+  }, [refreshKey]);
 
   const prettyTime = (value) => (value ? new Date(value).toLocaleString() : '—');
 
@@ -64,6 +76,7 @@ export default function Stores() {
 
   return (
     <section className="page active">
+      {toast && <Toast message={toast.message || toast} bad={toast.bad} onClose={() => setToast(null)} />}
       <div className="page-heading">
         <div>
           <div className="eyebrow">Tenant operations</div>

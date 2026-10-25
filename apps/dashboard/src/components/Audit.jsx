@@ -1,18 +1,26 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext.jsx';
+import Toast from './Toast.jsx';
 
-export default function Audit() {
+export default function Audit({ refreshKey }) {
   const { api } = useAuth();
   const [events, setEvents] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [toast, setToast] = useState(null);
 
-  const loadData = async () => {
+  const loadData = async (showNotification = false) => {
     try {
       const data = await api('/api/admin/audit-events?limit=50');
       setEvents(data.events || []);
+      if (showNotification) {
+        setToast('Audit events refreshed');
+      }
     } catch (error) {
       console.error('Failed to load audit events:', error);
+      if (showNotification) {
+        setToast('Failed to refresh audit events');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -21,6 +29,12 @@ export default function Audit() {
   useEffect(() => {
     loadData();
   }, [api]);
+
+  useEffect(() => {
+    if (refreshKey > 0) {
+      loadData(true);
+    }
+  }, [refreshKey]);
 
   const filteredEvents = events.filter((e) =>
     `${e.userEmail} ${e.upstreamId} ${e.toolName} ${e.exposedToolName} ${e.outcome}`
@@ -38,6 +52,7 @@ export default function Audit() {
 
   return (
     <section className="page active">
+      {toast && <Toast message={toast} onClose={() => setToast(null)} />}
       <div className="page-heading">
         <div>
           <div className="eyebrow">Traceability</div>
@@ -45,9 +60,6 @@ export default function Audit() {
           <p>Review tool calls with user identity, upstream, outcome, and latency.</p>
         </div>
         <div className="heading-actions">
-          <button className="btn" onClick={loadData}>
-            ↻ Refresh events
-          </button>
         </div>
       </div>
       <section className="card">

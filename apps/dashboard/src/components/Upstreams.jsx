@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import Toast from './Toast.jsx';
 
-export default function Upstreams() {
+export default function Upstreams({ refreshKey }) {
   const { api } = useAuth();
   const [servers, setServers] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -20,12 +20,18 @@ export default function Upstreams() {
   const [authDescription, setAuthDescription] = useState('');
   const [toast, setToast] = useState(null);
 
-  const loadData = async () => {
+  const loadData = async (showNotification = false) => {
     try {
       const data = await api('/api/admin/servers');
       setServers(data.servers || []);
+      if (showNotification) {
+        setToast({ message: 'Upstreams refreshed', bad: false });
+      }
     } catch (error) {
       console.error('Failed to load servers:', error);
+      if (showNotification) {
+        setToast({ message: 'Failed to refresh upstreams', bad: true });
+      }
     } finally {
       setIsLoading(false);
     }
@@ -34,6 +40,12 @@ export default function Upstreams() {
   useEffect(() => {
     loadData();
   }, [api]);
+
+  useEffect(() => {
+    if (refreshKey > 0) {
+      loadData(true);
+    }
+  }, [refreshKey]);
 
   const filteredServers = servers.filter((s) =>
     `${s.name} ${s.id} ${s.url}`.toLowerCase().includes(searchQuery.toLowerCase()),
@@ -178,6 +190,7 @@ export default function Upstreams() {
 
   return (
     <section className="page active">
+      {toast && <Toast message={toast.message || toast} bad={toast.bad} onClose={() => setToast(null)} />}
       <div className="page-heading">
         <div>
           <div className="eyebrow">Connectivity</div>

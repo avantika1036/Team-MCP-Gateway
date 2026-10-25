@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext.jsx';
 import Toast from './Toast.jsx';
 
-export default function Overview({ onNavigate }) {
+export default function Overview({ onNavigate, refreshKey }) {
   const { api } = useAuth();
   const [servers, setServers] = useState([]);
   const [events, setEvents] = useState([]);
@@ -33,6 +33,12 @@ export default function Overview({ onNavigate }) {
   useEffect(() => {
     loadData();
   }, [api]);
+
+  useEffect(() => {
+    if (refreshKey > 0) {
+      loadData(true);
+    }
+  }, [refreshKey]);
 
   const navigate = (page) => {
     onNavigate(page);
@@ -67,9 +73,6 @@ export default function Overview({ onNavigate }) {
           <p>Your MCP services, access controls, and activity in one place.</p>
         </div>
         <div className="heading-actions">
-          <button className="btn" onClick={() => loadData(true)}>
-            Refresh data
-          </button>
           <button className="btn primary" onClick={() => navigate('upstreams')}>
             Manage upstreams ↗
           </button>
